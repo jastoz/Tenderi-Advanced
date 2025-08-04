@@ -1,0 +1,517 @@
+/**
+ * ENHANCED UTILITY FUNCTIONS MODULE
+ * Contains helper functions for text processing, calculations, and enhanced functionality
+ */
+
+/**
+ * Standardizes text for search comparison
+ * @param {string} text - Text to standardize
+ * @returns {string} Standardized text
+ */
+function standardizeText(text) {
+    if (!text) return '';
+    return text
+        .toLowerCase()
+        .replace(/[čćç]/g, 'c')
+        .replace(/[žž]/g, 'z')
+        .replace(/[šš]/g, 's')
+        .replace(/[đđ]/g, 'd')
+        .replace(/,/g, '.');
+}
+
+/**
+ * ENHANCED: Extracts weight from product name and unit with WEIGHT DATABASE PRIORITY
+ * @param {string} name - Product name
+ * @param {string} unit - Product unit
+ * @param {string} code - Article code/šifra
+ * @param {string} source - Article source
+ * @returns {number} Weight in kilograms
+ */
+function extractWeight(name, unit, code, source) {
+    // PRIORITET 0: WEIGHT DATABASE ZA NAŠE ARTIKLE
+    if (code && source && typeof getArticleWeight === 'function') {
+        return getArticleWeight(code, name, unit, source);
+    }
+    
+    // Fallback to original parsing logic
+    if (!name) return 0;
+    const text = name.toLowerCase().replace(/,/g, '.');
+    unit = unit?.toLowerCase() || '';
+
+    Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `Extracting weight from: "${name}" (unit: "${unit}")`);
+
+    // Direct unit conversion
+    if (unit === 'kg' || unit === 'l' || unit === 'lit') {
+        Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `Direct unit conversion: 1.0kg`);
+        return 1.0;
+    }
+
+    let maxWeight = 0;
+
+    // 🥇 PRIORITET 1: NETO/OCJEDENA format - UVIJEK UZMI VEĆI BROJ (neto masa)
+    const netoPattern = /(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)\s*(?:g|gr|ml)\b/g;
+    let netoMatch;
+    while ((netoMatch = netoPattern.exec(text)) !== null) {
+        const firstNum = parseFloat(netoMatch[1]);
+        const secondNum = parseFloat(netoMatch[2]);
+        
+        // UVIJEK uzmi VEĆI broj (neto masa)
+        const netoMass = Math.max(firstNum, secondNum);
+        
+        // Convert to kg if in grams
+        const weightInKg = netoMass > 100 ? netoMass / 1000 : netoMass;
+        
+        Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `NETO/OCJEDENA pattern "${netoMatch[0]}": ${firstNum}/${secondNum} → neto masa: ${netoMass} → ${weightInKg}kg`);
+        
+        if (weightInKg > maxWeight) maxWeight = weightInKg;
+    }
+    if (maxWeight > 0) {
+        Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `Final weight from NETO pattern: ${maxWeight}kg`);
+        return maxWeight;
+    }
+
+    // 🥈 PRIORITET 2: KUT kalkulacija - masa po komadu × broj komada
+    if (unit === 'kut') {
+        Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `Processing KUT unit...`);
+        
+        // Traži masu po komadu (npr. "20g")
+        const masaPoKomadMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:g|gr|ml)\b/);
+        // Traži broj komada/pakiranje (npr. "120/1")
+        const packagingMatch = text.match(/(\d+)\/1\b/);
+        
+        if (masaPoKomadMatch && packagingMatch) {
+            const masaPoKomadGrams = parseFloat(masaPoKomadMatch[1]);
+            const brojKomada = parseInt(packagingMatch[1]);
+            
+            // Ukupna masa = masa po komadu × broj komada
+            const ukupnaMasaGrams = masaPoKomadGrams * brojKomada;
+            const ukupnaMasaKg = ukupnaMasaGrams / 1000;
+            
+            Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `KUT calculation: ${masaPoKomadGrams}g × ${brojKomada} komada = ${ukupnaMasaGrams}g = ${ukupnaMasaKg}kg`);
+            
+            maxWeight = ukupnaMasaKg;
+        } else {
+            Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `KUT: Could not find masa po komadu or packaging pattern`);
+        }
+        
+        if (maxWeight > 0) {
+            Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `Final weight from KUT calculation: ${maxWeight}kg`);
+            return maxWeight;
+        }
+    }
+
+    // 🥉 PRIORITET 3: Standardne težine (direktno navedene) - PRIJE packaging!
+    const weightPatterns = [
+        { regex: /(\d+(?:\.\d+)?)\s*kg\b/g, multiplier: 1 },
+        { regex: /(\d+(?:\.\d+)?)\s*l\b(?![\w])/g, multiplier: 1 },
+        { regex: /(\d+(?:\.\d+)?)\s*(?:gr|g)\b(?![\w])/g, multiplier: 0.001 },
+        { regex: /(\d+(?:\.\d+)?)\s*ml\b/g, multiplier: 0.001 }
+    ];
+
+    for (const pattern of weightPatterns) {
+        let match;
+        while ((match = pattern.regex.exec(text)) !== null) {
+            const weight = parseFloat(match[1]) * pattern.multiplier;
+            Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `Standard pattern "${match[0]}": ${weight}kg`);
+            if (weight > maxWeight) maxWeight = weight;
+        }
+    }
+    if (maxWeight > 0) {
+        Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `Final weight from standard patterns: ${maxWeight}kg`);
+        return maxWeight;
+    }
+
+    // 🏅 PRIORITET 4: Packaging format (ZADNJI prioritet - samo ako ništa drugo ne postoji)
+    const packagingPattern = /(\d+(?:\.\d+)?)\/1\b/g;
+    let packagingMatch;
+    while ((packagingMatch = packagingPattern.exec(text)) !== null) {
+        const packagingWeight = parseFloat(packagingMatch[1]);
+        Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `Packaging pattern "${packagingMatch[0]}": ${packagingWeight}kg (FALLBACK)`);
+        if (packagingWeight > maxWeight) maxWeight = packagingWeight;
+    }
+
+    if (maxWeight > 0) {
+        Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `Final weight from packaging pattern (fallback): ${maxWeight}kg`);
+    } else {
+        Logger.area('WEIGHT_EXTRACTION', Logger.LEVELS.DEBUG, `No weight found in "${name}"`);
+    }
+
+    return maxWeight;
+}
+
+/**
+ * Enhanced smart date parsing from various text formats
+ * @param {string|number} dateInput - Date in any format
+ * @returns {string} Date in YYYY-MM-DD format or empty string if parsing fails
+ */
+function parseSmartDate(dateInput) {
+    if (!dateInput) return '';
+    
+    const dateStr = dateInput.toString().trim();
+    if (!dateStr) return '';
+    
+    Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `Parsing date: "${dateStr}"`);
+    
+    try {
+        // 1. Check if already in ISO format (YYYY-MM-DD)
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            const testDate = new Date(dateStr);
+            if (!isNaN(testDate.getTime()) && testDate.getFullYear() > 1950 && testDate.getFullYear() < 2050) {
+                Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `Already ISO format: ${dateStr}`);
+                return dateStr;
+            }
+        }
+        
+        // 2. Check if Excel serial number
+        const serialNumber = parseFloat(dateStr);
+        if (!isNaN(serialNumber) && serialNumber > 25000 && serialNumber < 80000) {
+            const excelDate = new Date((serialNumber - 25569) * 86400 * 1000);
+            if (!isNaN(excelDate.getTime()) && excelDate.getFullYear() > 1950 && excelDate.getFullYear() < 2050) {
+                const result = excelDate.toISOString().split('T')[0];
+                Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `Excel serial ${serialNumber} → ${result}`);
+                return result;
+            }
+        }
+        
+        // 3. DMY format (European) - priority
+        const dmyMatch = dateStr.match(/^(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2,4})$/);
+        if (dmyMatch) {
+            let day = parseInt(dmyMatch[1]);
+            let month = parseInt(dmyMatch[2]);
+            let year = parseInt(dmyMatch[3]);
+            
+            if (year < 100) {
+                year += year < 50 ? 2000 : 1900;
+            }
+            
+            if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year > 1950 && year < 2050) {
+                const testDate = new Date(year, month - 1, day);
+                if (testDate.getFullYear() === year && testDate.getMonth() === (month - 1) && testDate.getDate() === day) {
+                    const result = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+                    Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `DMY format "${dateStr}" → ${result}`);
+                    return result;
+                }
+            }
+        }
+        
+        // 4. MDY format fallback
+        const mdyMatch = dateStr.match(/^(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2,4})$/);
+        if (mdyMatch) {
+            let month = parseInt(mdyMatch[1]);
+            let day = parseInt(mdyMatch[2]);
+            let year = parseInt(mdyMatch[3]);
+            
+            if (year < 100) {
+                year += year < 50 ? 2000 : 1900;
+            }
+            
+            if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year > 1950 && year < 2050) {
+                const testDate = new Date(year, month - 1, day);
+                if (testDate.getFullYear() === year && testDate.getMonth() === (month - 1) && testDate.getDate() === day) {
+                    const result = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+                    Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `MDY format "${dateStr}" → ${result}`);
+                    return result;
+                }
+            }
+        }
+        
+        // 5. YMD format
+        const ymdMatch = dateStr.match(/^(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})$/);
+        if (ymdMatch) {
+            const year = parseInt(ymdMatch[1]);
+            const month = parseInt(ymdMatch[2]);
+            const day = parseInt(ymdMatch[3]);
+            
+            if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year > 1950 && year < 2050) {
+                const testDate = new Date(year, month - 1, day);
+                if (testDate.getFullYear() === year && testDate.getMonth() === (month - 1) && testDate.getDate() === day) {
+                    const result = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+                    Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `YMD format "${dateStr}" → ${result}`);
+                    return result;
+                }
+            }
+        }
+        
+        // 6. JavaScript Date parser as last option
+        const jsDate = new Date(dateStr);
+        if (!isNaN(jsDate.getTime()) && jsDate.getFullYear() > 1950 && jsDate.getFullYear() < 2050) {
+            const result = jsDate.toISOString().split('T')[0];
+            Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `JavaScript parser "${dateStr}" → ${result}`);
+            return result;
+        }
+        
+        Logger.error(`Could not parse date: "${dateStr}"`);
+        return '';
+        
+    } catch (error) {
+        Logger.error(`Date parsing error for "${dateStr}":`, error);
+        return '';
+    }
+}
+
+/**
+ * Gets source color based on source name - ENHANCED FOR OUR ARTICLES
+ * @param {string} source - Source name
+ * @returns {string} CSS color value
+ */
+function getSourceColor(source) {
+    const lowerSource = source.toLowerCase();
+    if (lowerSource.includes('lager')) return '#d1fae5';
+    if (lowerSource.includes('urpd')) return '#e9d5ff';
+    return '#dbeafe';
+}
+
+/**
+ * Gets badge CSS class based on source name - ENHANCED FOR OUR ARTICLES
+ * @param {string} source - Source name
+ * @returns {string} CSS class name
+ */
+function getBadgeClass(source) {
+    const lowerSource = source.toLowerCase();
+    if (lowerSource.includes('lager')) return 'badge-green';
+    if (lowerSource.includes('urpd')) return 'badge-purple';
+    return 'badge-blue';
+}
+
+/**
+ * ENHANCED: Checks if article is "our article" (LAGER or URPD source)
+ * OLD LOGIC: Only checks source
+ * @param {string} source - Article source
+ * @returns {boolean} True if our article
+ */
+function isOurArticle(source) {
+    if (!source) return false;
+    const lowerSource = source.toLowerCase();
+    return lowerSource.includes('lager') || lowerSource.includes('urpd');
+}
+
+/**
+ * NEW: Enhanced function to determine if article is truly "ours" 
+ * ENHANCED LOGIC: Must have correct source AND exist in weight database
+ * @param {string} source - Article source
+ * @param {string} code - Article code
+ * @returns {boolean} True if truly our article
+ */
+function isTrulyOurArticle(source, code) {
+    if (!source || !code) return false;
+    
+    // First check: source must be LAGER or URPD
+    const lowerSource = source.toLowerCase();
+    const hasCorrectSource = lowerSource.includes('lager') || lowerSource.includes('urpd');
+    
+    if (!hasCorrectSource) {
+        return false;
+    }
+    
+    // Second check: code must exist in weight database
+    const existsInWeightDb = typeof window.weightDatabase !== 'undefined' && 
+                            window.weightDatabase.has(code);
+    
+    return existsInWeightDb;
+}
+
+/**
+ * ENHANCED: Validates price input for our articles
+ * @param {number} price - Price to validate
+ * @returns {string} 'valid', 'invalid', or 'empty'
+ */
+function validatePrice(price) {
+    if (!price || price === 0) return 'empty';
+    if (price < 0.50 || price > 50.00) return 'invalid'; // Validation range
+    return 'valid';
+}
+
+/**
+ * ENHANCED: Formats price for display with proper currency
+ * @param {number} price - Price to format
+ * @param {string} currency - Currency symbol (default: €)
+ * @returns {string} Formatted price
+ */
+function formatPrice(price, currency = '€') {
+    if (!price || price === 0) return `${currency}0.00`;
+    return `${currency}${price.toFixed(2)}`;
+}
+
+/**
+ * ENHANCED: Calculates price per kg from piece price and weight
+ * @param {number} pricePerPiece - Price per piece
+ * @param {number} weight - Weight in kg
+ * @returns {number} Price per kg
+ */
+function calculatePricePerKg(pricePerPiece, weight) {
+    if (!pricePerPiece || !weight || weight === 0) return 0;
+    return Math.round((pricePerPiece / weight) * 100) / 100;
+}
+
+/**
+ * ENHANCED: Calculates piece price from price per kg and weight
+ * @param {number} pricePerKg - Price per kg
+ * @param {number} weight - Weight in kg
+ * @returns {number} Price per piece
+ */
+function calculatePricePerPiece(pricePerKg, weight) {
+    if (!pricePerKg || !weight) return 0;
+    return Math.round((pricePerKg * weight) * 100) / 100;
+}
+
+/**
+ * Shows a message to the user
+ * @param {string} type - Message type: 'success', 'error', or 'info'
+ * @param {string} message - Message text
+ * @param {string} containerId - Container element ID (default: 'uploadStatus')
+ */
+function showMessage(type, message, containerId = 'uploadStatus') {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    const className = type === 'success' ? 'success-msg' : 
+                     type === 'error' ? 'error-msg' : 'info-msg';
+    container.innerHTML = `<div class="${className}">${message}</div>`;
+    
+    if (type !== 'info') {
+        setTimeout(() => container.innerHTML = '', 5000);
+    }
+}
+
+/**
+ * Shows a message in the troškovnik section
+ * @param {string} type - Message type
+ * @param {string} message - Message text
+ */
+function showTroskovnikMessage(type, message) {
+    showMessage(type, message, 'troskovnikStatus');
+}
+
+/**
+ * Generates CSV content from data array
+ * @param {Array} headers - CSV headers
+ * @param {Array} data - Data rows
+ * @returns {string} CSV content
+ */
+function generateCSV(headers, data) {
+    const csvData = [headers, ...data];
+    return csvData
+        .map(row => row.map(field => `"${field}"`).join(','))
+        .join('\n');
+}
+
+/**
+ * Downloads a blob as a file
+ * @param {Blob} blob - File content as blob
+ * @param {string} filename - Download filename
+ */
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Creates and downloads a CSV file
+ * @param {Array} headers - CSV headers
+ * @param {Array} data - CSV data rows
+ * @param {string} filename - Download filename
+ */
+function exportToCSV(headers, data, filename) {
+    const csvContent = generateCSV(headers, data);
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    downloadBlob(blob, filename);
+}
+
+/**
+ * ENHANCED: Refreshes troškovnik colors based on current results
+ * This function updates troškovnik item colors based on whether they have results
+ */
+function refreshTroskovnikColors() {
+    if (!troskovnik || troskovnik.length === 0) return;
+    
+    Logger.info('Refreshing troškovnik colors...');
+    
+    // Reset all found_results counters
+    troskovnik.forEach(item => {
+        item.found_results = 0;
+    });
+    
+    // Count results for each troškovnik item
+    if (results && results.length > 0) {
+        results.forEach(result => {
+            const troskovnikItem = troskovnik.find(t => t.redni_broj == result.rb);
+            if (troskovnikItem) {
+                troskovnikItem.found_results++;
+            }
+        });
+    }
+    
+    // Update troškovnik display if function exists
+    if (typeof updateTroskovnikDisplay === 'function') {
+        updateTroskovnikDisplay();
+    }
+    
+    Logger.info('Troškovnik colors refreshed');
+}
+
+/**
+ * ENHANCED: Debounce function for input handling
+ * @param {Function} func - Function to debounce
+ * @param {number} wait - Wait time in milliseconds
+ * @returns {Function} Debounced function
+ */
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+/**
+ * ENHANCED: Throttle function for performance
+ * @param {Function} func - Function to throttle
+ * @param {number} limit - Limit in milliseconds
+ * @returns {Function} Throttled function
+ */
+function throttle(func, limit) {
+    let inThrottle;
+    return function(...args) {
+        if (!inThrottle) {
+            func.apply(this, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
+
+// Expose functions globally
+window.standardizeText = standardizeText;
+window.extractWeight = extractWeight;
+window.parseSmartDate = parseSmartDate;
+window.getSourceColor = getSourceColor;
+window.getBadgeClass = getBadgeClass;
+window.isOurArticle = isOurArticle;
+window.validatePrice = validatePrice;
+window.formatPrice = formatPrice;
+window.calculatePricePerKg = calculatePricePerKg;
+window.calculatePricePerPiece = calculatePricePerPiece;
+window.showMessage = showMessage;
+window.showTroskovnikMessage = showTroskovnikMessage;
+window.generateCSV = generateCSV;
+window.downloadBlob = downloadBlob;
+window.exportToCSV = exportToCSV;
+window.refreshTroskovnikColors = refreshTroskovnikColors;
+window.debounce = debounce;
+window.throttle = throttle;
+
+Logger.info('Enhanced utils module loaded with weight database integration');
+Logger.debug('Priority 0: Weight Database (za naše artikle)');
+Logger.debug('Priority 1: NETO/OCJEDENA (veći broj)');
+Logger.debug('Priority 2: KUT calculation (masa × broj)');
+Logger.debug('Priority 3: Standard weights');
+Logger.debug('Priority 4: Packaging (fallback only)');
+Logger.debug('Enhanced: Price validation, calculation helpers, our article detection');

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <row>
+        <A>20001</A>
+        <B>Grašak konzerva 400g</B>
+        <C>kom</C>
+        <D>1,75</D>
+    </row>
+    <row>
+        <A>20002</A>
+        <B>Kukuruz šećerac 340g</B>
+        <C>kom</C>
+        <D>2,20</D>
+    </row>
+    <row>
+        <A>20003</A>
+        <B>Rajčica pelati 400g</B>
+        <C>kom</C>
+        <D>1,95</D>
+    </row>
+    <row>
+        <A>20004</A>
+        <B>Mahune rezane 720ml</B>
+        <C>kom</C>
+        <D>3,10</D>
+    </row>
+    <row>
+        <A>20005</A>
+        <B>Šampinjoni cijeli 400g</B>
+        <C>kom</C>
+        <D>2,65</D>
+    </row>
+</root>

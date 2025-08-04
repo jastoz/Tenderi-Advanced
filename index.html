@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tražilica Proizvoda & Troškovnik - Enhanced s direktnim upravljanjem cijenama</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f8fafc; color: #1f2937; padding-top: 70px; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        .header { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 30px; margin-bottom: 30px; }
+        .title { font-size: 28px; font-weight: bold; margin-bottom: 20px; color: #111827; }
+        
+        /* Sticky Search Bar - ABSOLUTE FORCED STICKY */
+        .sticky-search-bar { 
+            position: fixed !important; 
+            top: 0 !important; 
+            left: 0 !important; 
+            right: 0 !important; 
+            width: 100% !important;
+            height: auto !important;
+            background: white !important; 
+            border-bottom: 2px solid #2563eb !important; 
+            box-shadow: 0 2px 12px rgba(0,0,0,0.15) !important; 
+            z-index: 999999 !important; 
+            padding: 12px 20px !important;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            transform: none !important;
+            margin: 0 !important;
+            float: none !important;
+            clear: both !important;
+        }
+        
+        /* Force override any conflicting styles */
+        .sticky-search-bar * {
+            position: relative !important;
+        }
+        .sticky-search-container { 
+            max-width: 1400px; margin: 0 auto; 
+            display: flex; gap: 12px; align-items: center; 
+        }
+        .sticky-search-input { 
+            flex: 1; padding: 10px 16px; 
+            border: 2px solid #e5e7eb; border-radius: 8px; 
+            font-size: 16px; 
+        }
+        
+        /* Enhanced Autocomplete Styles */
+        .autocomplete-dropdown {
+            position: fixed;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            max-height: 500px;
+            overflow-y: auto;
+            z-index: 1001;
+            max-width: 800px; /* Moderate width for dropdown */
+        }
+        
+        .autocomplete-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid #f3f4f6;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .autocomplete-item:hover,
+        .autocomplete-item.highlighted {
+            background: #f9fafb;
+        }
+        
+        .autocomplete-content {
+            flex: 1;
+        }
+        
+        .autocomplete-main {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 6px;
+        }
+        
+        .autocomplete-details {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            font-size: 12px;
+        }
+        
+        .autocomplete-price {
+            background: #7c3aed;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .autocomplete-price-kg {
+            background: #059669;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .autocomplete-weight {
+            background: #fbbf24;
+            color: #92400e;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        
+        .autocomplete-exclude {
+            width: 20px;
+            height: 20px;
+            border: none;
+            border-radius: 4px;
+            background: #7c3aed;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .autocomplete-exclude:hover {
+            background: #6d28d9;
+        }
+        
+        /* NOVA FUNKCIONALNOST - Price Input Styling */
+        .autocomplete-price-input {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        
+        .autocomplete-price-input input {
+            width: 70px;
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .autocomplete-price-input input.our-article {
+            border: 2px solid #059669;
+            background: #ecfdf5;
+            color: #059669;
+        }
+        
+        .autocomplete-price-input input.external-article {
+            border: 2px solid #7c3aed;
+            background: #f3f4f6;
+            color: #7c3aed;
+        }
+        
+        .autocomplete-price-input button {
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        
+        .autocomplete-price-input button.our-article {
+            background: #059669;
+        }
+        
+        .autocomplete-price-input button.external-article {
+            background: #7c3aed;
+        }
+        
+        .autocomplete-price-input button.add-without-price {
+            background: #10b981;
+        }
+        
+        /* Google Sheets Status Styles */
+        .status-active {
+            color: #059669;
+            font-weight: bold;
+        }
+        
+        .status-fallback {
+            color: #d97706;
+            font-weight: bold;
+        }
+        
+        /* Weights Search Styles */
+        #weightsSearchInput:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+            outline: none;
+        }
+        
+        #weightsSearchInput::placeholder {
+            color: #9ca3af;
+            font-style: italic;
+        }
+        
+        .weights-search-highlight {
+            background-color: #fef3c7;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        
+        /* Tabs */
+        .tabs { display: flex; border-bottom: 2px solid #e5e7eb; margin-bottom: 20px; }
+        .tab { 
+            padding: 12px 24px; background: none; border: none; 
+            font-size: 14px; font-weight: 500; color: #6b7280; 
+            cursor: pointer; border-bottom: 2px solid transparent; 
+        }
+        .tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+        .tab:hover { color: #374151; }
+        .tab-content { display: block; }
+        .hidden { display: none !important; }
+        
+        /* Cards and Components */
+        .card { 
+            background: white; border-radius: 12px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+            padding: 24px; margin-bottom: 24px; 
+        }
+        .upload-area { 
+            border: 2px dashed #d1d5db; border-radius: 12px; 
+            padding: 40px; text-align: center; background: #fafafa; 
+            cursor: pointer; margin-bottom: 20px; 
+        }
+        .upload-area:hover { border-color: #2563eb; background: #f0f4ff; }
+        .upload-area.dragover { border-color: #2563eb; background: #e0e7ff; }
+        
+        /* Buttons */
+        .btn { 
+            padding: 12px 24px; border: none; border-radius: 8px; 
+            font-weight: 500; cursor: pointer; font-size: 14px; 
+        }
+        .btn-primary { background: #2563eb; color: white; }
+        .btn-success { background: #059669; color: white; }
+        .btn-purple { background: #7c3aed; color: white; }
+        .btn-google { background: #4285f4; color: white; }
+        .btn:hover { opacity: 0.9; }
+        
+        .auto-btn {
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 11px;
+            margin: 1px;
+        }
+        
+        /* Tables */
+        .table-container { 
+            overflow-x: auto; border-radius: 8px; 
+            border: 1px solid #e5e7eb; 
+        }
+        
+        /* Enhanced Troškovnik Table - Force horizontal scroll with larger fonts */
+        #troskovnikTableContainer .table-container {
+            overflow-x: auto;
+            max-width: 100%;
+            min-width: 1500px; /* Increased minimum width to accommodate wider article names */
+            border: 1px solid #e5e7eb; /* Subtle visual boundary */
+        }
+        
+        #troskovnikTableContainer table {
+            min-width: 1500px; /* Increased minimum width to accommodate wider article names */
+            table-layout: fixed; /* Better column control */
+            border-collapse: collapse; /* Clean table borders */
+        }
+        
+        #troskovnikTableContainer th,
+        #troskovnikTableContainer td {
+            white-space: nowrap; /* Prevent text wrapping */
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: 8px 6px; /* Optimized padding for better tabulation */
+            vertical-align: middle; /* Better alignment for larger content */
+            border: 1px solid #e5e7eb; /* Clean borders for better tabulation */
+        }
+        
+        /* Special styling for article name column to allow full text display */
+        #troskovnikTableContainer th:nth-child(2),
+        #troskovnikTableContainer td:nth-child(2) {
+            white-space: normal !important; /* Allow text wrapping for article names */
+            overflow: visible !important;
+            text-overflow: unset !important;
+            max-width: 350px; /* Increased width for better readability */
+            min-width: 250px; /* Minimum width to maintain table structure */
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        /* Responsive improvements for wider screens */
+        @media (min-width: 1400px) {
+            .container {
+                max-width: 1600px; /* Moderate increase for wide screens */
+                padding: 20px;
+            }
+            
+            .sticky-search-container {
+                max-width: 1600px;
+            }
+        }
+        
+        @media (min-width: 1800px) {
+            .container {
+                max-width: 1800px; /* Moderate increase for very wide displays */
+                padding: 20px;
+            }
+            
+            .sticky-search-container {
+                max-width: 1800px;
+            }
+        }
+        .table { 
+            width: 100%; border-collapse: collapse; 
+            background: white; 
+        }
+        .table th, .table td { 
+            padding: 12px; text-align: left; 
+            border-bottom: 1px solid #e5e7eb; 
+        }
+        .table th { 
+            background: #f9fafb; font-weight: 600; 
+            color: #374151; font-size: 12px; 
+        }
+        
+        /* Messages */
+        .success-msg { 
+            background: #d1fae5; border: 1px solid #a7f3d0; 
+            color: #065f46; padding: 12px; border-radius: 8px; 
+            margin: 12px 0; white-space: pre-line; 
+        }
+        .error-msg { 
+            background: #fee2e2; border: 1px solid #fecaca; 
+            color: #991b1b; padding: 12px; border-radius: 8px; 
+            margin: 12px 0; white-space: pre-line; 
+        }
+        .info-msg { 
+            background: #dbeafe; border: 1px solid #93c5fd; 
+            color: #1e40af; padding: 12px; border-radius: 8px; 
+            margin: 12px 0; white-space: pre-line; 
+        }
+        
+        /* Enhanced Price Input Styles */
+        .price-input-group {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+        }
+        
+        .price-input-label {
+            font-size: 9px;
+            color: #6b7280;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .price-input {
+            width: 70px;
+            padding: 4px 6px;
+            border: 2px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+        }
+        
+        .price-input.valid {
+            border-color: #059669;
+            background: #ecfdf5;
+            color: #059669;
+        }
+        
+        .price-input.invalid {
+            border-color: #dc2626;
+            background: #fef2f2;
+            color: #dc2626;
+        }
+        
+        .price-sync-indicator {
+            font-size: 8px;
+            color: #6b7280;
+            text-align: center;
+        }
+        
+        /* Badge styles */
+        .badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .badge-green { background: #d1fae5; color: #065f46; }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        .badge-purple { background: #e9d5ff; color: #7c2d12; }
+        
+        /* Weight specific styles */
+        .weight-csv { 
+            background: #d1fae5 !important; 
+            color: #065f46 !important; 
+            font-weight: bold !important; 
+            border: 1px solid #059669 !important;
+        }
+        .weight-parsed { 
+            background: #fef7ed !important; 
+            color: #7c2d12 !important; 
+        }
+        
+        /* State management buttons */
+        .state-buttons {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 999;
+        }
+        
+        /* Responsive state buttons for wider screens */
+        @media (min-width: 1400px) {
+            .state-buttons {
+                right: 25px; /* Moderate adjustment for wide screens */
+            }
+        }
+        
+        @media (min-width: 1800px) {
+            .state-buttons {
+                right: 30px; /* Moderate adjustment for very wide screens */
+            }
+        }
+        
+        .btn-state {
+            padding: 8px 12px;
+            font-size: 12px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            color: white;
+            font-weight: bold;
+            min-width: 120px;
+        }
+        
+        .btn-quick-save { background: #10b981; }
+        .btn-save-as { background: #7c3aed; }
+        .btn-load-state { background: #0891b2; }
+        
+        /* Enhanced Weight Generation Button */
+        .btn-generate-weights {
+            background: #f59e0b;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 13px;
+            margin-left: 8px;
+        }
+        
+        .btn-generate-weights:hover {
+            background: #d97706;
+        }
+        
+        /* Enhanced notification styles */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            max-width: 400px; /* Prevent notifications from being too wide */
+            z-index: 1002; /* Above autocomplete */
+            padding: 16px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            font-weight: 500;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        .notification.success {
+            background: #d1fae5;
+            border: 1px solid #059669;
+            color: #065f46;
+        }
+        
+        .notification.error {
+            background: #fee2e2;
+            border: 1px solid #dc2626;
+            color: #991b1b;
+        }
+        
+        .notification.info {
+            background: #dbeafe;
+            border: 1px solid #2563eb;
+            color: #1e40af;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <!-- State Management Buttons -->
+    <div class="state-buttons">
+        <button class="btn-state btn-quick-save" onclick="handleQuickSave()" title="Brzo spremi trenutno stanje">
+            💾 Quick Save
+        </button>
+        <button class="btn-state btn-save-as" onclick="handleSaveAs()" title="Spremi stanje aplikacije s timestampom">
+            📁 Save As
+        </button>
+        <button class="btn-state btn-load-state" onclick="document.getElementById('stateFileInput').click()" title="Učitaj spremljeno stanje">
+            📂 Load
+        </button>
+    </div>
+    
+    <!-- Hidden file input for state loading -->
+    <input type="file" id="stateFileInput" accept=".json" onchange="handleStateFileLoad(event)" style="display: none;">
+
+    <!-- Sticky Search Bar -->
+    <div class="sticky-search-bar">
+        <div class="sticky-search-container">
+            <input type="text" id="globalSearchInput" class="sticky-search-input" 
+                   placeholder="🔍 ENHANCED Glavna tražilica - npr. '1. Ajvar 300-1000' za range pretragu (Enter za pretragu)..." 
+                   autocomplete="off">
+            <button class="btn btn-primary" onclick="handleGlobalSearch()">Pretraži</button>
+            <button class="btn btn-success" onclick="handleClearResults()">Očisti</button>
+            <button class="btn btn-purple" onclick="showKeyboardHelp()" title="Prikaži kratice tipkovnice">⌨️</button>
+            
+            <!-- Checkbox za prioritiziranje prošlogodišnjih cijena -->
+            <div style="margin-top: 8px; margin-left: 4px;">
+                <label style="display: flex; align-items: center; font-size: 14px; color: #7c3aed; cursor: pointer;">
+                    <input type="checkbox" id="proslogodisnjePriorityCheckbox" style="margin-right: 6px; transform: scale(1.1);" onchange="handleHistoryPriorityChange()">
+                    <span>📅 Prošlogodišnje na vrh</span>
+                </label>
+            </div>
+        </div>
+        <!-- ROTO checkbox uklonjen iz tražilice -->
+    </div>
+
+
+
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1 class="title">🔍 ENHANCED Tražilica s direktnim upravljanjem cijenama</h1>
+            <div style="background: #e0e7ff; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; color: #3730a3;">
+                <strong>🆕 NOVI WORKFLOW - Još kraći:</strong>
+                🥇 Prvi artikl: Upiši izlaznu cijenu + Enter → ide u troškovnik • 🥈 Ostali artikli: Samo Enter u prazno polje → automatski se dodaju • ⚡ Workflow skraćen na samo 2 koraka!
+            </div>
+            <div style="margin-bottom: 16px; display: flex; gap: 24px; align-items: center;">
+                <label style="font-size: 15px; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="rotoFilterCheckbox" checked onchange="window.setRotoFilterEnabled && window.setRotoFilterEnabled(this.checked)">
+                    Prikaži rezultate od dobavljača <b>ROTO</b>
+                </label>
+                <label style="font-size: 15px; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="weightOnTopCheckbox" checked onchange="window.setWeightOnTopEnabled && window.setWeightOnTopEnabled(this.checked)">
+                    Sa težinom na vrh
+                </label>
+                <label style="font-size: 15px; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="latestPerCodeCheckbox" onchange="window.setLatestPerCodeEnabled && window.setLatestPerCodeEnabled(this.checked)">
+                    ista šifra - najnoviji datum
+                </label>
+            </div>
+            
+            <!-- Tabs -->
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('search', event)">🔍 Upload & Tražilica</button>
+                <button class="tab" onclick="showTab('troskovnik', event)">📊 Troškovnik (<span id="troskovnikCount">0</span>)</button>
+                <button class="tab" onclick="showTab('results', event)">🎯 Rezultati (<span id="resultsCount">0</span>)</button>
+                <button class="tab" onclick="showTab('tablicaRabata', event)">📋 Tablica Rabata (<span id="tablicaRabataCount">0</span>)</button>
+                <button class="tab" onclick="showTab('proslogodisnjeCijene', event)">📅 Prošlogodišnje cijene (<span id="proslogodisnjeCijeneCount">0</span>)</button>
+                <button class="tab" onclick="showTab('weights', event)">⚖️ Težine (<span id="weightsCount">0</span>)</button>
+            </div>
+            
+            <!-- Stats -->
+            <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; font-size: 14px; color: #6b7280;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong>📊 Učitano:</strong> <span id="articlesCount">0</span> artikala • 
+                        <strong>🎯 Rezultati:</strong> <span id="resultsCountText">0</span> • 
+                        <strong>📊 Troškovnik:</strong> <span id="troskovnikCountText">0</span> • 
+                        <strong>⚖️ Težine:</strong> <span id="weightsDbCount">0</span> • 
+                        <strong>🏠 Lager:</strong> <span id="lagerCount">0</span> • 
+                        <strong>🏢 URPD:</strong> <span id="urpdCount">0</span> • 
+                        <strong>📄 Cjenici:</strong> <span id="cjeniciCount">0</span>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-success" onclick="saveTroskovnikOnly()" style="font-size: 12px; padding: 6px 12px;">💾 Spremi troškovnik</button>
+                        <button class="btn btn-primary" onclick="saveAppState()" style="font-size: 12px; padding: 6px 12px;">💾 Spremi sve</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Tab -->
+        <div id="searchTab" class="tab-content">
+            <div class="card">
+                <h2>📄 Upload datoteka</h2>
+                <div class="upload-area" 
+                     onclick="document.getElementById('fileInput').click()"
+                     ondragover="handleDragOver(event)"
+                     ondragleave="handleDragLeave(event)"
+                     ondrop="handleFileDrop(event)">
+                    <div style="font-size: 48px; margin-bottom: 12px;">📄</div>
+                    <div style="font-weight: 600; margin-bottom: 8px;">Upload Excel/CSV cjenike</div>
+                    <div style="font-size: 14px; color: #6b7280;">Kliknite ili povucite datoteku ovdje</div>
+                    <div style="font-size: 12px; color: #9ca3af; margin-top: 8px;">
+                        🎯 Podržava: .xlsx, .xls, .csv • 💾 Povucite .json za učitavanje stanja ili troškovnika
+                    </div>
+                </div>
+                <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)" style="display: none;">
+                <div id="uploadStatus"></div>
+                
+                <!-- Demo Data Section -->
+                <div style="margin-top: 20px; padding: 16px; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <h3 style="margin-bottom: 12px; color: #374151;">📄 Upload podataka</h3>
+                    <p style="font-size: 14px; color: #6b7280; margin-bottom: 12px;">
+                        Demo podaci su uklonjeni. Upload-ajte svoje Excel/CSV datoteke za početak rada.
+                    </p>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="handleLoadDemoTroskovnik()">📊 Demo Troškovnik</button>
+                        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">📁 Upload Artikli</button>
+                        <button class="btn btn-google" onclick="handleGoogleSheetsImport()" style="background: #4285f4; color: white;">📊 Google Sheets</button>
+                        <button class="btn btn-purple" onclick="document.getElementById('troskovnikLoadInput').click()">📂 Učitaj troškovnik</button>
+                    </div>
+                    <input type="file" id="troskovnikLoadInput" accept=".json" onchange="handleTroskovnikLoadSelect(event)" style="display: none;">
+                </div>
+                
+                <!-- Enhanced Search Tips -->
+                <div class="info-msg" style="margin-top: 20px;">
+                    <strong>🆕 NOVI WORKFLOW - Skraćeno na 2 koraka:</strong><br>
+                    <strong>🔍 Korak 1:</strong> "1. grašak" → vidi autocomplete s rezultatima<br>
+                    <strong>🥇 Korak 2a - Prvi artikl:</strong> Upiši izlaznu cijenu + Enter → ide u troškovnik<br>
+                    <strong>🥈 Korak 2b - Ostali artikli:</strong> Samo Enter u prazno polje → automatski dodano<br>
+                    <strong>⚡ Gotovo!</strong> Workflow skraćen s 4 koraka na samo 2!<br><br>
+                    <strong>🏠 Za NAŠE artikle (LAGER/URPD):</strong> Automatska težina iz baze<br>
+                    <strong>🌍 Za TUĐE artikle:</strong> Trebate upisati i cijenu i težinu<br>
+                    <strong>🔄 Automatski:</strong> Prvi s cijenom → troškovnik, ostali → nabavne cijene<br>
+                    <strong>💾 Stanje:</strong> Quick Save (Ctrl+S) • Spremi sve (Ctrl+Shift+S) • Spremi troškovnik (Ctrl+T) • Load (Ctrl+O)
+                </div>
+            </div>
+        </div>
+
+        <!-- Troškovnik Tab -->
+        <div id="troskovnikTab" class="tab-content hidden">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>📊 Enhanced Troškovnik s Težinom</h2>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-primary" onclick="document.getElementById('troskovnikFileInput').click()">📁 Upload CSV/Excel</button>
+                        <button class="btn btn-purple" onclick="handleRefreshColors()">🎨 Refresh Colors</button>
+                        <button class="btn btn-primary" onclick="handleGenerateWeights()" style="background: #f59e0b;">🧠 Generiraj težine</button>
+                    </div>
+                </div>
+                
+                <input type="file" id="troskovnikFileInput" accept=".csv,.xlsx,.xls" onchange="handleTroskovnikFileSelect(event)" style="display: none;">
+                
+                <div id="troskovnikUpload" class="hidden">
+                    <div class="upload-area"
+                         onclick="document.getElementById('troskovnikFileInput').click()"
+                         ondragover="handleDragOver(event)"
+                         ondragleave="handleDragLeave(event)"
+                         ondrop="handleTroskovnikFileDrop(event)">
+                        <div style="font-size: 48px; margin-bottom: 12px;">📊</div>
+                        <div style="font-weight: 600; margin-bottom: 8px;">Upload Troškovnik</div>
+                        <div style="font-size: 14px; color: #6b7280;">CSV, Excel ili XML format</div>
+                    </div>
+                </div>
+                
+                <div id="troskovnikStatus"></div>
+                
+                <div id="troskovnikTableContainer" class="hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div>
+                            <strong>Troškovnik stavki:</strong> <span id="troskovnikItemCount">0</span>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-success" onclick="handleAddTroskovnikItem()" id="addTroskovnikBtn" style="display: none;">➕ Nova stavka</button>
+                            <button class="btn btn-primary" onclick="handleExportTroskovnikCSV()" id="exportTroskovnikCSVBtn" style="display: none;">📄 Export CSV</button>
+                            <button class="btn btn-purple" onclick="handleExportTroskovnikExcel()" id="exportTroskovnikExcelBtn" style="display: none;">📊 Export Excel</button>
+                            <button class="btn btn-success" onclick="saveTroskovnikOnly()" id="saveTroskovnikBtn" style="display: none;">💾 Spremi troškovnik</button>
+                            <button class="btn btn-primary" onclick="handleClearTroskovnik()" id="clearTroskovnikBtn" style="display: none;">🗑️ Očisti sve</button>
+                        </div>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50px;">R.B.</th>
+                                    <th>Naziv artikla 💬</th>
+                                    <th style="width: 60px;">J.M.</th>
+                                    <th style="width: 100px;">⚖️ Težina (kg)</th>
+                                    <th style="width: 80px;">Količina</th>
+                                    <th style="width: 100px;">Izlazna cijena</th>
+                                    <th style="width: 100px;">Nabavna 1</th>
+                                    <th style="width: 120px;">Dobavljač 1</th>
+                                    <th style="width: 100px;">Nabavna 2</th>
+                                    <th style="width: 120px;">Dobavljač 2</th>
+                                    <th style="width: 80px;">Marža (%)</th>
+                                    <th style="width: 100px;">🎯 Rezultati</th>
+                                    <th style="width: 120px;">Akcije</th>
+                                </tr>
+                            </thead>
+                            <tbody id="troskovnikTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Tab -->
+        <div id="resultsTab" class="tab-content hidden">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>🎯 Enhanced Rezultati s direktnim upravljanjem cijenama</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-primary" onclick="handleExportResults()" id="exportBtn" style="display: none;">💾 Export CSV</button>
+                        <button class="btn btn-success" onclick="handleGenerateFromResults()" id="generateTablicaBtn" style="display: none;">📊 Generiraj tablicu</button>
+                        <button class="btn btn-purple" onclick="handleClearResults()">🗑️ Obriši sve</button>
+                    </div>
+                </div>
+                
+                <div id="resultsContainer">
+                    <div style="text-align: center; padding: 40px; color: #6b7280;">
+                        <div style="font-size: 48px; margin-bottom: 12px;">🔍</div>
+                        <h3>Nema rezultata</h3>
+                        <p>Koristite glavnu tražilicu na vrhu stranice za pretragu.</p>
+                        <div class="info-msg" style="margin-top: 20px; text-align: left;">
+                            <strong>🆕 NOVA FUNKCIONALNOST - Direktno upravljanje cijenama:</strong><br>
+                            • Za LAGER/URPD artikle možete upisati izlaznu cijenu direktno u autocomplete<br>
+                            • Workflow skraćen s 4 koraka na 1 korak: Traži → Upiši cijenu → Dodaj<br>
+                            • Automatska sinkronizacija s troškovnikom prema težini<br>
+                            • Validacija cijena i težina u realnom vremenu<br>
+                            • Visual feedback s zelenim (naši) i ljubičastim (tuđi) okvirima<br>
+                            • <strong>⚖️ NOVO: Koriste se točne težine iz baze za naše artikle!</strong><br>
+                            • <strong>📊 NOVO: VPC/kg kolona pokazuje nabavnu cijenu po kilogramu!</strong><br>
+                            • <strong>📄 Upload-ajte svoje podatke za početak rada!</strong><br>
+                            • <strong>🆕 NOVO: XML export u tablici rabata!</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tablica Rabata Tab -->
+        <div id="tablicaRabataTab" class="tab-content hidden">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>📋 Tablica Rabata (Enhanced)</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-success" onclick="handleGenerateFromResults()" id="generateFromResultsBtn">🎯 Generiraj iz rezultata</button>
+                        <button class="btn btn-primary" onclick="handleExportTablicaCSV()" id="exportTablicaRabataCSVBtn" style="display: none;">📄 Export CSV</button>
+                        <button class="btn btn-purple" onclick="handleExportTablicaExcel()" id="exportTablicaRabataExcelBtn" style="display: none;">📊 Export Excel</button>
+                        <button class="btn btn-success" onclick="handleExportTablicaXML()" id="exportTablicaRabataXMLBtn" style="display: none;">🔄 Export XML</button>
+                        <button class="btn btn-primary" onclick="handleClearTablica()" id="clearTablicaRabataBtn" style="display: none;">🗑️ Očisti sve</button>
+                    </div>
+                </div>
+                
+                <div id="tablicaRabataStatus"></div>
+                <div id="tablicaRabataContainer">
+                    <div style="text-align: center; padding: 40px; color: #6b7280;">
+                        <div style="font-size: 48px; margin-bottom: 12px;">📊</div>
+                        <h3>Nema generiranih podataka</h3>
+                        <p>Kliknite "Generiraj iz rezultata" za kreiranje tablice rabata.</p>
+                        <div class="info-msg" style="margin-top: 20px; text-align: left;">
+                            <strong>🆕 ENHANCED - Generiranje iz rezultata:</strong><br>
+                            • Uzimaju se samo artikli iz rezultata s izvorom "Lager" ili "URPD"<br>
+                            • Koriste se izlazne cijene koje ste upisali direktno u autocomplete<br>
+                            • Automatska kalkulacija prema €/kg koristeći težine iz troškovnika<br>
+                            • Za istu šifru uzima se najjeftinija stavka<br>
+                            • Direktna sinkronizacija s troškovnikom<br>
+                            • Koristi profesionalno generirane težine<br>
+                            • <strong>🆕 EXPORTI: CSV, Excel (XLSX) i XML formatima!</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Prošlogodišnje cijene Tab -->
+        <div id="proslogodisnjeCijeneTab" class="tab-content hidden">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>📅 Prošlogodišnje cijene</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-primary" onclick="document.getElementById('proslogodisnjeCijeneFileInput').click()">📁 Upload tablicu rabata</button>
+                        <button class="btn btn-success" onclick="handleExportProslogodisnje()" id="exportProslogodisnjeCijeneBtn" style="display: none;">💾 Export CSV</button>
+                        <button class="btn btn-purple" onclick="handleClearProslogodisnje()" id="clearProslogodisnjeCijeneBtn" style="display: none;">🗑️ Očisti sve</button>
+                    </div>
+                </div>
+                
+                <input type="file" id="proslogodisnjeCijeneFileInput" accept=".csv,.xlsx,.xls,.xml" onchange="handleProslogodisnjeCijeneFileSelect(event)" style="display: none;">
+                
+                <div id="proslogodisnjeCijeneUpload" class="hidden">
+                    <div class="upload-area"
+                         onclick="document.getElementById('proslogodisnjeCijeneFileInput').click()"
+                         ondragover="handleDragOver(event)"
+                         ondragleave="handleDragLeave(event)"
+                         ondrop="handleProslogodisnjeCijeneFileDrop(event)">
+                        <div style="font-size: 48px; margin-bottom: 12px;">📅</div>
+                        <div style="font-weight: 600; margin-bottom: 8px;">Upload prošlogodišnje tablice rabata</div>
+                        <div style="font-size: 14px; color: #6b7280;">CSV, Excel ili XML format</div>
+                        <div style="font-size: 12px; color: #9ca3af; margin-top: 8px;">
+                            Format: Šifra (A), Naziv (B), J.m (C), Cijena (D)
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="proslogodisnjeCijeneStatus"></div>
+                
+                <div id="proslogodisnjeCijeneTableContainer" class="hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <div>
+                            <strong>Prošlogodišnje cijene:</strong> <span id="proslogodisnjeCijeneItemCount">0</span>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="proslogodisnjeCijeneSearch" placeholder="🔍 Pretraži po šifri ili nazivu..." style="padding: 8px; border: 1px solid #e5e7eb; border-radius: 4px; width: 250px;">
+                            <button class="btn btn-primary" onclick="handleProslogodisnjeCijeneSearch()" style="padding: 8px 12px; font-size: 12px;">🔍</button>
+                        </div>
+                    </div>
+                    
+                    <div class="info-msg" style="margin-bottom: 16px;">
+                        <strong>📅 Prošlogodišnje cijene - orijentir za ovogodišnju nabavu:</strong><br>
+                        • Upload-ajte staru tablicu rabata ako ste s kupcem radili prošle godine<br>
+                        • Format: Šifra (A), Naziv (B), J.m (C), Cijena (D)<br>
+                        • Koristi se kao orijentir za određivanje izlaznih cijena u novom postupku nabave<br>
+                        • Omogućava usporedbu cijena između godina i bolje planiranje ponuda
+                    </div>
+                    
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 100px;">Šifra</th>
+                                    <th style="width: 300px;">Naziv</th>
+                                    <th style="width: 60px;">J.M.</th>
+                                    <th style="width: 100px;">Prošla cijena (€)</th>
+                                    <th style="width: 100px;">Datum dodavanja</th>
+                                </tr>
+                            </thead>
+                            <tbody id="proslogodisnjeCijeneTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div id="proslogodisnjeCijeneEmptyState" style="text-align: center; padding: 40px; color: #6b7280;">
+                    <div style="font-size: 48px; margin-bottom: 12px;">📅</div>
+                    <h3>Nema prošlogodišnjih cijena</h3>
+                    <p>Upload-ajte staru tablicu rabata za orijentir u novom postupku nabave.</p>
+                    <div class="info-msg" style="margin-top: 20px; text-align: left;">
+                        <strong>📅 Kako koristiti prošlogodišnje cijene:</strong><br>
+                        1. Upload-ajte staru tablicu rabata iz prošle godine<br>
+                        2. Koristite podatke kao orijentir za određivanje novih cijena<br>
+                        3. Usporedite prošle i trenutne cijene za bolju strategiju<br>
+                        4. Format datoteke: Šifra (A), Naziv (B), J.m (C), Cijena (D)<br>
+                        5. Podržava CSV i Excel formate
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Weights Tab -->
+        <div id="weightsTab" class="tab-content hidden">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>⚖️ Enhanced Težine artikala</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-primary" onclick="document.getElementById('weightsFile').click()">📁 Upload CSV</button>
+                        <button class="btn btn-google" onclick="handleGoogleSheetsImport()" style="background: #4285f4; color: white;">📊 Google Sheets</button>
+                        <button class="btn btn-success" onclick="handleApplyWeights()" id="applyWeightsBtn" style="display: none;">🔄 Primijeni</button>
+                        <button class="btn btn-purple" onclick="handleExportWeights()" id="exportWeightsBtn" style="display: none;">💾 Export</button>
+                        <button class="btn btn-google" onclick="handleExportToGoogleSheets()" id="exportToGoogleSheetsBtn" style="display: none;">📤 Export u GS</button>
+                        <button class="btn btn-primary" onclick="handleClearWeights()">🗑️ Očisti</button>
+                    </div>
+                </div>
+                
+                <input type="file" id="weightsFile" accept=".csv" onchange="handleWeightsFileSelect(event)" style="display: none;">
+                <div id="weightsStatus"></div>
+                
+                <div id="weightsTableContainer" style="display: none;">
+                    <div class="info-msg" style="margin-bottom: 16px;">
+                        <strong>⚖️ VAŽNO:</strong> Sve težine u CSV-u moraju biti u <strong>kilogramima</strong>!<br>
+                        📄 Format: Kolona A = Šifra artikla, Kolona V (21.) = Težina u kg<br>
+                        🎯 Program automatski prepoznaje naše artikle (LAGER/URPD) i koristi točne težine<br>
+                        🟢 <strong>Zeleno obojene težine</strong> = iz Google Sheets/CSV baze (precizno)<br>
+                        🟡 <strong>Žuto obojene težine</strong> = parsirano iz naziva (približno)<br>
+                        🧠 <strong>Troškovnik može generirati težine</strong> = profesionalni algoritam iz naziva<br>
+                        📊 <strong>Google Sheets</strong> = direktan uvoz iz Google Apps Script s istim formatom<br>
+                        ⚡ <strong>Google Sheets uvijek prioritet</strong> = automatski se primjenjuje na sve artikle
+                    </div>
+                    
+                    <!-- Search functionality -->
+                    <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 300px;">
+                            <input type="text" 
+                                   id="weightsSearchInput" 
+                                   placeholder="🔍 Traži težine... npr. 'komp viš' za 'kompot višnja 4200g'" 
+                                   style="width: 100%; padding: 10px 16px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px;"
+                                   onkeydown="if(event.key==='Enter'){handleWeightsSearch(this.value)}"
+                                   title="🔍 Traži po šifri, nazivu, podgrupi, dobavljaču... • ⌨️ Ctrl+F za fokus">
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                                                    <button class="btn btn-primary" onclick="clearWeightsSearch()" style="padding: 8px 12px; font-size: 12px;">🗑️ Očisti</button>
+                        <button class="btn btn-success" onclick="toggleAutoRefresh()" id="autoRefreshBtn" style="padding: 8px 12px; font-size: 12px;">🔄 Auto-refresh</button>
+                        <span id="weightsSearchCount" style="font-size: 12px; color: #6b7280; white-space: nowrap;">Sve težine</span>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 16px; font-size: 12px; color: #6b7280; font-style: italic;">
+                        💡 <strong>Napredna pretraga:</strong> Možete tražiti po više riječi odjednom (npr. "komp viš 4200" pronaći će "kompot višnja 4200g"). 
+                        Traži po šifri, nazivu, podgrupi, dobavljaču, težini... • ⚖️ <strong>Range pretraga:</strong> "Ajvar 300-1000" pronaći će ajvare 300-1000g • ⌨️ <strong>Ctrl+F</strong> za brzi fokus na tražilicu
+                    </div>
+                    
+                    <div style="margin-bottom: 16px;">
+                        <strong>Ukupno:</strong> <span id="weightsTableCount">0</span> težina • 
+                        <strong>Status:</strong> <span id="weightsStatus2">Neaktivno</span> •
+                        <strong>Google Sheets:</strong> <span id="googleSheetsStatus" class="status-fallback">Spreman za uvoz</span>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 100px;">Šifra artikla</th>
+                                    <th style="width: 100px;">Podgrupa (E)</th>
+                                    <th style="width: 250px;">Naziv artikla (F)</th>
+                                    <th style="width: 80px;">J.M. (H)</th>
+                                    <th style="width: 150px;">Dobavljač (S)</th>
+                                    <th style="width: 100px;">Težina (V)</th>
+                                    <th style="width: 100px;">Status korištenja</th>
+                                    <th style="width: 200px;">Povezani artikli</th>
+                                </tr>
+                            </thead>
+                            <tbody id="weightsTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Weight Database Info -->
+                <div id="weightDatabaseInfo" class="hidden" style="background: #f9fafb; padding: 16px; border-radius: 8px; margin-top: 20px; border: 1px solid #e5e7eb;">
+                    <h3 style="margin-bottom: 12px; color: #374151;">📊 Statistike baze težina</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; font-size: 14px;">
+                        <div>
+                            <strong>Ukupno težina:</strong><br>
+                            <span id="weightCount" style="font-size: 18px; color: #059669; font-weight: bold;">0</span>
+                        </div>
+                        <div>
+                            <strong>Prosječna težina:</strong><br>
+                            <span id="avgWeight" style="font-size: 18px; color: #0891b2; font-weight: bold;">0.000</span> kg
+                        </div>
+                        <div>
+                            <strong>Status:</strong><br>
+                            <span id="weightDbStatus" style="font-size: 14px; color: #059669; font-weight: bold;">Aktivno</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load JavaScript modules in correct order -->
+    <script src="logger.js"></script>
+    <script src="data.js"></script>
+    <script src="utils.js"></script>
+    <script src="weight-manager.js"></script>
+    <script src="enhanced-search.js"></script>
+    <script src="enhanced-results.js"></script>
+    <script src="troskovnik.js"></script>
+    <script src="tablicarabata.js"></script>
+    <script src="proslogodisnje-cijene.js"></script>
+    <script src="ui.js"></script>
+    <script src="state-manager.js"></script>
+    <script src="app.js"></script>
+
+    <script>
+        // WRAPPER FUNCTIONS - Direct calls to external modules without recursion
+        
+        // === BASIC UTILITY FUNCTIONS ===
+        function showMessage(type, message, containerId = 'uploadStatus') {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            
+            const className = type === 'success' ? 'success-msg' : 
+                             type === 'error' ? 'error-msg' : 'info-msg';
+            container.innerHTML = `<div class="${className}">${message}</div>`;
+            
+            if (type !== 'info') {
+                setTimeout(() => container.innerHTML = '', 5000);
+            }
+        }
+        
+        function showTab(tabName, event) {
+            // Hide autocomplete if available
+            try {
+                if (window.hideAutocomplete) window.hideAutocomplete();
+            } catch (e) {}
+            
+            // Update tab states
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            
+            if (event && event.target) {
+                event.target.classList.add('active');
+            } else {
+                const tabs = document.querySelectorAll('.tab');
+                tabs.forEach(tab => {
+                    if (tab.textContent.toLowerCase().includes(tabName.toLowerCase())) {
+                        tab.classList.add('active');
+                    }
+                });
+            }
+            
+            // Show target tab
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+            const targetTab = document.getElementById(tabName + 'Tab');
+            if (targetTab) targetTab.classList.remove('hidden');
+            
+            // Focus search input if weights tab is active
+            if (tabName === 'weights') {
+                setTimeout(() => {
+                    const searchInput = document.getElementById('weightsSearchInput');
+                    if (searchInput) {
+                        searchInput.focus();
+                    }
+                    
+                    // Auto-refresh weights when opening weights tab
+                    if (typeof startAutoRefreshIfNeeded === 'function' && weightDatabase.size > 0) {
+                        console.log('🔄 Tab change refresh: primjenjujem težine...');
+                        updateExistingArticlesWithWeightsAndPDV();
+                    }
+                }, 100);
+            }
+            
+            // Update AppState if available
+            try {
+                if (window.AppState && window.AppState.setCurrentTab) {
+                    window.AppState.setCurrentTab(tabName);
+                }
+            } catch (e) {}
+        }
+        
+        // === ENHANCED NOTIFICATION SYSTEM ===
+        function showNotification(type, message, duration = 4000) {
+            // Remove existing notifications
+            const existingNotifications = document.querySelectorAll('.notification');
+            existingNotifications.forEach(n => n.remove());
+            
+            // Create new notification
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = message;
+            
+            document.body.appendChild(notification);
+            
+            // Auto remove
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, duration);
+        }
+        
+        // === NEW WEIGHT GENERATION FUNCTION ===
+        function handleGenerateWeights() {
+            if (window.generateWeightsFromNames) {
+                window.generateWeightsFromNames();
+            } else {
+                showMessage('info', 'Weight generation funkcionalnost se još učitava...', 'troskovnikStatus');
+            }
+        }
+        
+        // === DRAG AND DROP HANDLERS ===
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.currentTarget.classList.add('dragover');
+        }
+        
+        function handleDragLeave(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('dragover');
+        }
+        
+        function handleFileDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('dragover');
+            const files = Array.from(event.dataTransfer.files);
+            
+            // Check for JSON state files
+            const jsonFiles = files.filter(file => file.name.toLowerCase().endsWith('.json'));
+            if (jsonFiles.length > 0 && window.handleStateFileDrop) {
+                window.handleStateFileDrop(event);
+                return;
+            }
+            
+            // Handle regular files
+            if (files.length > 0) {
+                processUploadedFile(files[0]);
+            }
+        }
+        
+        function handleTroskovnikFileDrop(event) {
+            event.preventDefault();
+            event.currentTarget.classList.remove('dragover');
+            const files = Array.from(event.dataTransfer.files);
+            if (files.length > 0) {
+                processTroskovnikFile(files[0]);
+            }
+        }
+        
+        // === FILE PROCESSING ===
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) processUploadedFile(file);
+        }
+        
+        function handleTroskovnikFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) handleTroskovnikFileProcessing(file);
+            event.target.value = '';
+        }
+        
+        function handleWeightsFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) processWeightsFile(file);
+            event.target.value = '';
+        }
+        
+        function processUploadedFile(file) {
+            console.log('📁 Processing uploaded file:', file.name);
+            
+            // Use external processFile function if available
+            if (window.processFile) {
+                window.processFile(file);
+            } else {
+                // Basic fallback implementation
+                showMessage('info', 'Obrađujem ' + file.name + '...');
+                
+                if (file.name.toLowerCase().endsWith('.json')) {
+                    // Handle JSON state files
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const state = JSON.parse(e.target.result);
+                            if (window.deserializeAppState) {
+                                window.deserializeAppState(state);
+                            } else {
+                                showMessage('success', 'JSON datoteka učitana (osnovni mode)');
+                            }
+                        } catch (error) {
+                            showMessage('error', 'Greška u JSON datoteci: ' + error.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                } else {
+                    // Handle Excel/CSV files
+                    showMessage('error', 'Funkcionalnost za Excel/CSV datoteke još se učitava...');
+                }
+            }
+        }
+        
+        function handleTroskovnikFileProcessing(file) {
+            console.log('📊 Processing troškovnik file:', file.name);
+            
+            if (window.processTroskovnikFile) {
+                window.processTroskovnikFile(file);
+            } else {
+                showMessage('info', 'Troškovnik funkcionalnost se još učitava...', 'troskovnikStatus');
+            }
+        }
+        
+        function processWeightsFile(file) {
+            console.log('⚖️ Processing weights file:', file.name);
+            
+            if (window.processWeightFile) {
+                window.processWeightFile(file);
+            } else {
+                showMessage('error', 'CSV funkcionalnost nije dostupna', 'weightsStatus');
+            }
+        }
+        
+        function handleGoogleSheetsImport() {
+            console.log('📊 Starting Google Sheets import...');
+            if (window.importFromGoogleSheets) {
+                importFromGoogleSheets().then(result => {
+                    if (result.success) {
+                        showMessage('success', 'Google Sheets podaci uspješno učitani!', 'weightsStatus');
+                    } else {
+                        showMessage('error', 'Greška pri učitavanju iz Google Sheets: ' + result.error, 'weightsStatus');
+                    }
+                }).catch(error => {
+                    showMessage('error', 'Greška pri učitavanju iz Google Sheets: ' + error.message, 'weightsStatus');
+                });
+            } else {
+                showMessage('error', 'Google Sheets funkcionalnost nije dostupna', 'weightsStatus');
+            }
+        }
+        
+        function handleExportToGoogleSheets() {
+            console.log('📤 Starting Google Sheets export...');
+            if (window.exportWeightsToGoogleSheets) {
+                exportWeightsToGoogleSheets().then(result => {
+                    if (result.success) {
+                        showMessage('success', 'Podaci uspješno exportirani u Google Sheets!', 'weightsStatus');
+                    } else {
+                        showMessage('error', 'Greška pri exportu u Google Sheets: ' + result.error, 'weightsStatus');
+                    }
+                }).catch(error => {
+                    showMessage('error', 'Greška pri exportu u Google Sheets: ' + error.message, 'weightsStatus');
+                });
+            } else {
+                showMessage('error', 'Google Sheets export funkcionalnost nije dostupna', 'weightsStatus');
+            }
+        }
+        
+        // === SEARCH FUNCTIONS ===
+        function handleGlobalSearch() {
+            if (window.performGlobalSearch) {
+                window.performGlobalSearch();
+            } else {
+                const query = document.getElementById('globalSearchInput').value;
+                if (!query.trim()) {
+                    alert('Unesite pojam za pretragu!');
+                    return;
+                }
+                showMessage('info', 'Search funkcionalnost se još učitava...');
+            }
+        }
+        
+        function handleClearResults() {
+            if (window.clearResults) {
+                window.clearResults();
+            } else {
+                document.getElementById('globalSearchInput').value = '';
+                showMessage('info', 'Rezultati očišćeni (osnovni mode)');
+            }
+        }
+        
+        function handleSetSearchQuery(query) {
+            const input = document.getElementById('globalSearchInput');
+            if (input) {
+                input.value = query;
+                input.focus();
+            }
+        }
+        
+        // === DEMO FUNCTIONS ===
+        function handleLoadDemoTroskovnik() {
+            if (window.getDemoTroskovnik && typeof troskovnik !== 'undefined') {
+                troskovnik.length = 0;
+                troskovnik.push(...window.getDemoTroskovnik());
+                
+                if (window.updateTroskovnikDisplay) {
+                    window.updateTroskovnikDisplay();
+                } else {
+                    document.getElementById('troskovnikTableContainer').classList.remove('hidden');
+                }
+                
+                updateStats();
+                showMessage('success', `✅ Demo troškovnik s težinom učitan s ${troskovnik.length} stavki!`, 'troskovnikStatus');
+            } else {
+                showMessage('info', 'Demo troškovnik se još učitava...', 'troskovnikStatus');
+            }
+        }
+        
+        function handleGenerateDemoResults() {
+            showMessage('info', '📄 Demo podaci su uklonjeni. Upload-ajte svoje podatke za testiranje funkcionalnosti.', 'uploadStatus');
+        }
+        
+        function handleDemoWorkflow() {
+            handleLoadDemoTroskovnik();
+            showNotification('info', 
+                '📄 Demo podaci su uklonjeni.<br><br>' +
+                '1. 📊 Demo troškovnik učitan<br>' +
+                '2. 📁 Upload-ajte svoje artikle za testiranje<br>' +
+                '3. 💰 Testirajte direktno upisivanje cijena u autocomplete!<br>' +
+                '4. ⚖️ Koristite "Generiraj težine" za automatsko popunjavanje<br>' +
+                '5. 📊 Generirajte tablicu rabata direktno iz rezultata', 6000);
+        }
+        
+        // === STATE MANAGEMENT ===
+        function handleQuickSave() {
+            if (window.quickSaveState) {
+                window.quickSaveState();
+            } else {
+                showMessage('error', '❌ KRITIČNA GREŠKA: Quick Save ne radi! State management nije učitan.');
+            }
+        }
+        
+        function handleSaveAs() {
+            if (window.saveAppState) {
+                window.saveAppState();
+            } else {
+                showMessage('error', '❌ KRITIČNA GREŠKA: Save As ne radi! State management nije učitan.');
+            }
+        }
+        
+        function handleStateFileLoad(event) {
+            console.log('🔍 Loading state file...');
+            const file = event.target.files[0];
+            
+            if (!file) {
+                console.log('❌ No file selected');
+                return;
+            }
+            
+            console.log('📁 Selected file:', file.name, 'Size:', file.size, 'Type:', file.type);
+            
+            // Validate JSON file
+            if (!file.name.toLowerCase().endsWith('.json')) {
+                showMessage('error', '❌ Molimo odaberite JSON datoteku!');
+                return;
+            }
+            
+            // Priority 1: Use loadAppState if available (which it should be)
+            if (window.loadAppState && typeof window.loadAppState === 'function') {
+                console.log('✅ Using loadAppState function');
+                window.loadAppState(file);
+            } 
+            // Priority 2: Fallback to handleStateFileSelect
+            else if (window.handleStateFileSelect && typeof window.handleStateFileSelect === 'function') {
+                console.log('✅ Using handleStateFileSelect function');
+                window.handleStateFileSelect(event);
+            } 
+            // Priority 3: Last resort - try processUploadedFile
+            else {
+                console.log('⚠️ Using processUploadedFile as fallback');
+                if (window.processFile && typeof window.processFile === 'function') {
+                    window.processFile(file);
+                } else {
+                    showMessage('error', '❌ KRITIČNA GREŠKA: Nijedna funkcija za učitavanje nije dostupna!\n\nMolimo osvježite stranicu i pokušajte ponovo.');
+                }
+            }
+            
+            // Clear the input so the same file can be selected again
+            event.target.value = '';
+        }
+        
+        // === TROŠKOVNIK FUNCTIONS ===
+        function handleRefreshColors() {
+            if (window.refreshTroskovnikColors) {
+                window.refreshTroskovnikColors();
+                showMessage('success', '🎨 Troškovnik colors refreshed!', 'troskovnikStatus');
+            } else {
+                showMessage('info', 'Color refresh se još učitava...', 'troskovnikStatus');
+            }
+        }
+        
+        function handleAddTroskovnikItem() {
+            if (window.addNewTroskovnikItem) {
+                window.addNewTroskovnikItem();
+            } else {
+                showMessage('info', 'Add item funkcionalnost se još učitava...', 'troskovnikStatus');
+            }
+        }
+        
+        function handleExportTroskovnikCSV() {
+            if (window.exportTroskovnikCSV) {
+                window.exportTroskovnikCSV();
+            } else {
+                showMessage('info', 'CSV export se još učitava...', 'troskovnikStatus');
+            }
+        }
+        
+        function handleExportTroskovnikExcel() {
+            if (window.exportTroskovnikExcel) {
+                window.exportTroskovnikExcel();
+            } else {
+                showMessage('info', 'Excel export se još učitava...', 'troskovnikStatus');
+            }
+        }
+        
+        function handleClearTroskovnik() {
+            if (window.clearAllTroskovnik) {
+                window.clearAllTroskovnik();
+            } else {
+                showMessage('info', 'Clear funkcionalnost se još učitava...', 'troskovnikStatus');
+            }
+        }
+        
+        // === RESULTS FUNCTIONS ===
+        function handleExportResults() {
+            if (window.exportResults) {
+                window.exportResults();
+            } else {
+                showMessage('info', 'Results export se još učitava...');
+            }
+        }
+        
+        function handleGenerateFromResults() {
+            if (window.generateFromResults) {
+                window.generateFromResults();
+            } else {
+                showMessage('info', 'Tablica generation se još učitava...', 'tablicaRabataStatus');
+            }
+        }
+        
+        // === TABLICA RABATA FUNCTIONS ===
+        function handleExportTablicaCSV() {
+            if (window.exportTablicaRabataCSV) {
+                window.exportTablicaRabataCSV();
+            } else {
+                showMessage('info', 'CSV export se još učitava...', 'tablicaRabataStatus');
+            }
+        }
+        
+        function handleExportTablicaExcel() {
+            if (window.exportTablicaRabataExcel) {
+                window.exportTablicaRabataExcel();
+            } else {
+                showMessage('info', 'Excel export se još učitava...', 'tablicaRabataStatus');
+            }
+        }
+        
+        // NEW: XML Export Handler
+        function handleExportTablicaXML() {
+            if (window.exportTablicaRabataXML) {
+                window.exportTablicaRabataXML();
+            } else {
+                showMessage('info', 'XML export se još učitava...', 'tablicaRabataStatus');
+            }
+        }
+        
+        function handleClearTablica() {
+            if (window.clearTablicaRabata) {
+                window.clearTablicaRabata();
+            } else {
+                showMessage('info', 'Clear funkcionalnost se još učitava...', 'tablicaRabataStatus');
+            }
+        }
+        
+        // === WEIGHTS FUNCTIONS ===
+        function handleApplyWeights() {
+            if (window.applyWeightsToArticles) {
+                window.applyWeightsToArticles();
+            } else {
+                showMessage('error', 'Apply funkcionalnost nije dostupna', 'weightsStatus');
+            }
+        }
+        
+        function handleExportWeights() {
+            if (window.exportWeightDatabase) {
+                window.exportWeightDatabase();
+            } else {
+                showMessage('error', 'Export funkcionalnost nije dostupna', 'weightsStatus');
+            }
+        }
+        
+        function handleClearWeights() {
+            if (window.clearWeightDatabase) {
+                window.clearWeightDatabase();
+            } else {
+                showMessage('error', 'Clear funkcionalnost nije dostupna', 'weightsStatus');
+            }
+        }
+        
+        // === STATISTICS UPDATE ===
+        function updateStats() {
+            try {
+                // Call external function if available, otherwise do basic update
+                if (window.updateArticleStats && 
+                    typeof window.updateArticleStats === 'function') {
+                    window.updateArticleStats();
+                } else {
+                    // Basic fallback
+                    const elements = [
+                        'articlesCount', 'lagerCount', 'urpdCount', 'cjeniciCount',
+                        'resultsCount', 'resultsCountText', 'troskovnikCount', 
+                        'troskovnikCountText', 'tablicaRabataCount', 'weightsCount', 'weightsDbCount'
+                    ];
+                    
+                    elements.forEach(id => {
+                        const element = document.getElementById(id);
+                        if (element) {
+                            if (id.includes('articles') && typeof articles !== 'undefined') {
+                                element.textContent = articles.length;
+                            } else if (id.includes('results') && typeof results !== 'undefined') {
+                                element.textContent = results.length;
+                            } else if (id.includes('troskovnik') && typeof troskovnik !== 'undefined') {
+                                element.textContent = troskovnik.length;
+                            } else if (id.includes('tablica') && typeof tablicaRabata !== 'undefined') {
+                                element.textContent = tablicaRabata.length;
+                            } else if (id.includes('weight') && typeof weightDatabase !== 'undefined') {
+                                element.textContent = weightDatabase.size || 0;
+                            }
+                        }
+                    });
+                }
+            } catch (error) {
+                console.warn('⚠️ Stats update error:', error.message);
+            }
+        }
+        
+        // === KEYBOARD SHORTCUTS ===
+        function showKeyboardHelp() {
+            if (window.showEnhancedKeyboardShortcutsHelp) {
+                window.showEnhancedKeyboardShortcutsHelp();
+            } else {
+                alert('⌨️ ENHANCED KRATICE TIPKOVNICE s direktnim cijenama:\n\n' +
+                    '🔍 PRETRAGA S DIREKTNIM CIJENAMA:\n' +
+                    '• Ctrl+/ - Fokus na glavnu tražilicu\n' +
+                    '• Enter u autocomplete - Dodaj s cijenom\n' +
+                    '• Tab u autocomplete - Prebaci između polja (tuđi artikli)\n' +
+                    '• Escape - Zatvori autocomplete\n\n' +
+                    '⚖️ RANGE PRETRAGA (NOVA!):\n' +
+                    '• "1. Ajvar 300-1000" - pronađi ajvare 300-1000g\n' +
+                    '• "Komp 500-2000" - pronađi kompote 500-2000g\n' +
+                    '• Range se odnosi na težinu u gramima\n\n' +
+                    '💾 SPREMANJE/UČITAVANJE:\n' +
+                    '• Ctrl+S - Brzo spremi stanje\n' +
+                    '• Ctrl+Shift+S - Spremi sve (kompletno stanje)\n' +
+                    '• Ctrl+T - Spremi samo troškovnik (manja datoteka)\n' +
+                    '• Ctrl+O - Učitaj stanje iz datoteke\n' +
+                    '• 💾 Spremi troškovnik - Samo troškovnik (manja datoteka)\n' +
+                    '• 💾 Spremi sve - Kompletno stanje aplikacije\n\n' +
+                    '🆕 NOVA FUNKCIONALNOST:\n' +
+                    '• 🏠 Naši artikli (LAGER/URPD): Samo cijenu, automatska težina\n' +
+                    '• 🌍 Tuđi artikli: Cijena + težina, validacija\n' +
+                    '• ⚡ Workflow skraćen s 4 na 1 korak\n' +
+                    '• 📊 Automatska sinkronizacija s troškovnikom\n' +
+                    '• 🎨 Color coding prema broju rezultata\n' +
+                    '• ⚖️ Range pretraga po težini');
+            }
+        }
+        
+        // === OPTIMIZED STICKY SEARCH BAR ENFORCEMENT ===
+        let stickyFixInProgress = false;
+        
+        function optimizedStickySearchBar() {
+            // Prevent recursive calls
+            if (stickyFixInProgress) return;
+            stickyFixInProgress = true;
+            
+            try {
+                const stickyBar = document.querySelector('.sticky-search-bar');
+                if (stickyBar) {
+                    // Only update if position is wrong
+                    const computedStyle = window.getComputedStyle(stickyBar);
+                    if (computedStyle.position !== 'fixed' || computedStyle.top !== '0px') {
+                        stickyBar.style.cssText = `
+                            position: fixed !important;
+                            top: 0px !important;
+                            left: 0px !important;
+                            right: 0px !important;
+                            width: 100% !important;
+                            z-index: 99999 !important;
+                            display: block !important;
+                            visibility: visible !important;
+                            opacity: 1 !important;
+                            background: white !important;
+                            border-bottom: 2px solid #2563eb !important;
+                            box-shadow: 0 2px 12px rgba(0,0,0,0.15) !important;
+                            padding: 12px 20px !important;
+                        `;
+                    }
+                }
+            } catch (error) {
+                console.warn('Sticky bar fix error:', error);
+            } finally {
+                stickyFixInProgress = false;
+            }
+        }
+        
+        // === INITIALIZATION ===
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Starting Enhanced Application with direct price management...');
+            
+            // OPTIMIZED STICKY SEARCH BAR ENFORCEMENT
+            optimizedStickySearchBar();
+            
+            // Monitor with reasonable frequency
+            setInterval(optimizedStickySearchBar, 500);
+            
+            // Force on scroll only
+            window.addEventListener('scroll', optimizedStickySearchBar);
+            
+            console.log('✅ OPTIMIZED STICKY SEARCH BAR ACTIVATED!');
+            
+            // Wait for modules to load
+            setTimeout(() => {
+                updateStats();
+                console.log('📊 Basic stats updated');
+                
+                // CRITICAL: Check if state management is loaded
+                if (!window.saveAppState || !window.quickSaveState) {
+                    console.error('❌ KRITIČNA GREŠKA: State management nije učitan!');
+                    showMessage('error', '❌ KRITIČNA GREŠKA: State management nije učitan! Quick Save i Save As neće raditi!');
+                } else {
+                    console.log('✅ State management loaded successfully');
+                }
+            }, 200);
+            
+            // Global search input setup
+            const globalInput = document.getElementById('globalSearchInput');
+            if (globalInput) {
+                globalInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleGlobalSearch();
+                    }
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        try {
+                            if (window.hideAutocomplete) window.hideAutocomplete();
+                        } catch (err) {}
+                    }
+                });
+                
+                // Enhanced search input handling
+                globalInput.addEventListener('input', function(e) {
+                    try {
+                        if (window.handleSearchInput) window.handleSearchInput(e);
+                    } catch (err) {}
+                });
+                
+                globalInput.addEventListener('keydown', function(e) {
+                    try {
+                        if (window.handleGlobalSearchKeypress) window.handleGlobalSearchKeypress(e);
+                    } catch (err) {}
+                });
+                
+                globalInput.addEventListener('blur', function() {
+                    setTimeout(() => {
+                        try {
+                            if (window.hideAutocomplete) window.hideAutocomplete();
+                        } catch (err) {}
+                    }, 150);
+                });
+            }
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(event) {
+                try {
+                    // Ctrl+/ to focus search
+                    if ((event.ctrlKey || event.metaKey) && event.key === '/') {
+                        event.preventDefault();
+                        if (globalInput) globalInput.focus();
+                    }
+                    
+                    // Ctrl+S for quick save
+                    if ((event.ctrlKey || event.metaKey) && event.key === 's' && !event.shiftKey) {
+                        event.preventDefault();
+                        if (window.quickSaveState) {
+                            window.quickSaveState();
+                        } else {
+                            handleQuickSave();
+                        }
+                    }
+                    
+                    // Ctrl+Shift+S for Save As
+                    if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'S') {
+                        event.preventDefault();
+                        if (window.saveAppState) {
+                            window.saveAppState();
+                        } else {
+                            handleSaveAs();
+                        }
+                    }
+                    
+                    // Ctrl+O for load state
+                    if ((event.ctrlKey || event.metaKey) && event.key === 'o') {
+                        event.preventDefault();
+                        const stateInput = document.getElementById('stateFileInput');
+                        if (stateInput) {
+                            stateInput.click();
+                        } else {
+                            showMessage('info', 'Load funkcionalnost se još učitava...');
+                        }
+                    }
+                    
+                    // Ctrl+T for save troskovnik only
+                    if ((event.ctrlKey || event.metaKey) && event.key === 't') {
+                        event.preventDefault();
+                        if (window.saveTroskovnikOnly) {
+                            window.saveTroskovnikOnly();
+                        } else {
+                            showMessage('info', 'Troškovnik save funkcionalnost se još učitava...');
+                        }
+                    }
+                    
+                    // Ctrl+G for generate weights
+                    if ((event.ctrlKey || event.metaKey) && event.key === 'g') {
+                        event.preventDefault();
+                        handleGenerateWeights();
+                    }
+                } catch (error) {
+                    console.warn('⚠️ Keyboard shortcut error:', error.message);
+                }
+            });
+            
+            // === KEYBOARD SHORTCUT: T za fokusiranje sticky tražilice ===
+            document.addEventListener('keydown', function(event) {
+                // Ako je fokus već u inputu ili textarea, ignoriraj
+                const active = document.activeElement;
+                if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+                // Samo slovo T, bez modifikatora
+                if (event.key === 't' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+                    event.preventDefault();
+                    if (globalInput) {
+                        // Prevent any scrolling by using preventScroll option
+                        globalInput.focus({preventScroll: true});
+                        globalInput.select();
+                        // Also add the 't' character that was intercepted
+                        globalInput.value = 't';
+                        // Position cursor at end
+                        globalInput.setSelectionRange(1, 1);
+                    }
+                }
+            });
+
+            console.log('✅ Enhanced Application with direct price management initialized successfully!');
+            console.log('📊 Demo data removed - upload your own data');
+            console.log('🔍 Enhanced search with direct price input ready');
+            console.log('💾 State management ready');
+            console.log('⚖️ Weight database ready');
+            console.log('🧠 Professional weight generation ready');
+            console.log('🎨 Enhanced UI features with notifications active');
+            console.log('⚡ Workflow skraćen s 4 koraka na 1 korak!');
+        });
+
+        // Global error protection
+        window.addEventListener('error', function(event) {
+            console.warn('🛡️ Global error caught:', event.error?.message || 'Unknown error');
+            if (event.error?.message?.includes('Maximum call stack size exceeded')) {
+                console.error('🔄 RECURSION DETECTED - Application may be unstable');
+                return true;
+            }
+        });
+
+        console.log('✅ Enhanced Application HTML loaded with direct price management - Ready for production use!');
+    </script>
+</body>
+</html>

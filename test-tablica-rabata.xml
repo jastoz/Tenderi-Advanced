@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TablicaRabata>
+    <Artikal>
+        <Sifra>10001</Sifra>
+        <Naziv>Ajvar blagi 300g</Naziv>
+        <JM>kom</JM>
+        <Cijena>2.50</Cijena>
+    </Artikal>
+    <Artikal>
+        <Sifra>10002</Sifra>
+        <Naziv>Kompot višnja 720ml</Naziv>
+        <JM>kom</JM>
+        <Cijena>3.25</Cijena>
+    </Artikal>
+    <Artikal>
+        <Sifra>10003</Sifra>
+        <Naziv>Pašteta pileća 100g</Naziv>
+        <JM>kom</JM>
+        <Cijena>1.85</Cijena>
+    </Artikal>
+    <Artikal>
+        <Sifra>10004</Sifra>
+        <Naziv>Keksi čokoladni 200g</Naziv>
+        <JM>pak</JM>
+        <Cijena>2.40</Cijena>
+    </Artikal>
+    <Artikal>
+        <Sifra>10005</Sifra>
+        <Naziv>Džem šljivin 450g</Naziv>
+        <JM>kom</JM>
+        <Cijena>4.15</Cijena>
+    </Artikal>
+</TablicaRabata>

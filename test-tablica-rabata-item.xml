@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <item>
+        <sifra>30001</sifra>
+        <naziv>Meso teletina mljevena 500g</naziv>
+        <jm>kg</jm>
+        <cijena>12.50</cijena>
+    </item>
+    <item>
+        <sifra>30002</sifra>
+        <naziv>Pršut dalmatinski 100g</naziv>
+        <jm>kom</jm>
+        <cijena>8.75</cijena>
+    </item>
+    <item>
+        <sifra>30003</sifra>
+        <naziv>Sir kačkavalj 300g</naziv>
+        <jm>kom</jm>
+        <cijena>5.90</cijena>
+    </item>
+    <item>
+        <sifra>30004</sifra>
+        <naziv>Jogurt prirodni 180g</naziv>
+        <jm>kom</jm>
+        <cijena>1.45</cijena>
+    </item>
+    <item>
+        <sifra>30005</sifra>
+        <naziv>Mlijeko trajno 1L</naziv>
+        <jm>L</jm>
+        <cijena>1.25</cijena>
+    </item>
+</root>
