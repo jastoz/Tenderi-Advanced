@@ -547,6 +547,11 @@ function initializeUIEventListeners() {
     
     // Enhanced keyboard shortcuts
     document.addEventListener('keydown', function(event) {
+        // PLAYWRIGHT COMPATIBILITY: Block all keyboard shortcuts in automation contexts
+        if (event.isTrusted === false) {
+            console.log('🤖 Keyboard shortcut blocked in automation context:', event.key, event.ctrlKey, event.metaKey);
+            return;
+        }
         // Ctrl+S / Cmd+S for quick save (prevent browser save)
         if ((event.ctrlKey || event.metaKey) && event.key === 's') {
             event.preventDefault();
@@ -563,12 +568,17 @@ function initializeUIEventListeners() {
             }
         }
         
-        // Ctrl+O / Cmd+O for load state
+        // Ctrl+O / Cmd+O for load state - disabled for Playwright compatibility
         if ((event.ctrlKey || event.metaKey) && event.key === 'o') {
             event.preventDefault();
-            const fileInput = document.getElementById('stateFileInput');
-            if (fileInput) {
-                fileInput.click();
+            // Only allow in user-initiated contexts, not in automation/Playwright
+            if (event.isTrusted !== false) {
+                const fileInput = document.getElementById('stateFileInput');
+                if (fileInput) {
+                    fileInput.click();
+                }
+            } else {
+                console.log('🤖 Ctrl+O blocked in automation context to prevent file chooser modal');
             }
         }
         

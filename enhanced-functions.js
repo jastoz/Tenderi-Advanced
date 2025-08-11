@@ -3,6 +3,10 @@
  * Functions that need to be added to make the enhanced system work
  */
 
+try {
+console.log('🔥🔥🔥🔥🔥 ENHANCED-FUNCTIONS.JS SE UČITAVA!!!');
+console.log('🔥🔥🔥🔥🔥 Loading enhanced-functions.js module...');
+
 // ===== ENHANCED ARTICLE IDENTIFICATION FUNCTIONS =====
 
 /**
@@ -36,10 +40,152 @@ function isTrulyOurArticle(source, code) {
  * Generates tablica rabata from results with user prices - NOVA GLAVNA FUNKCIJA
  */
 function generateFromResults() {
-    // console.log('🎯 Generating tablica rabata from enhanced results...');
+    // ALWAYS LOG - bypass try/catch for critical debugging
+    console.log('🔥🔥🔥 JEBENI KRITIČNI DEBUG: generateFromResults POZVANA!!!');
+    console.log('🔥🔥🔥 window.results exists:', typeof window.results !== 'undefined');
+    console.log('🔥🔥🔥 window.results array:', Array.isArray(window.results));
+    console.log('🔥🔥🔥 window.results length:', window.results?.length || 'UNDEFINED');
+    console.log('🔥🔥🔥 window.weightDatabase exists:', typeof window.weightDatabase !== 'undefined');
+    console.log('🔥🔥🔥 window.weightDatabase size:', window.weightDatabase?.size || 'UNDEFINED');
+    console.log('🔥🔥🔥 window.tablicarabataData exists:', typeof window.tablicarabataData !== 'undefined');
     
-    // Check if we have results with user prices
-    const resultsWithPrices = results.filter(r => r.hasUserPrice && r.pricePerPiece > 0);
+    // Log first few results for inspection
+    if (window.results && window.results.length > 0) {
+        console.log('🔥🔥🔥 First 3 results:', window.results.slice(0, 3));
+    }
+    
+    try {
+        console.log('🔥 JEBENI DEBUG: Starting generateFromResults...');
+        
+        // Safety checks for required global variables
+        if (typeof window.results === 'undefined' || !Array.isArray(window.results)) {
+            console.log('❌ JEBENO: Nema results!');
+            alert('JEBENO: Nema results! Length: ' + (window.results?.length || 'undefined'));
+            showMessage('error', 
+                '❌ Nema rezultata pretrage!\n\n' +
+                'Molimo dodajte artikle kroz pretragu prije generiranja tablice rabata.', 
+                'tablicaRabataStatus'
+            );
+            return;
+        }
+        
+        if (typeof window.troskovnik === 'undefined' || !Array.isArray(window.troskovnik)) {
+            console.log('❌ JEBENO: Nema troskovnik!');
+            alert('JEBENO: Nema troskovnik! Length: ' + (window.troskovnik?.length || 'undefined'));
+            showMessage('error', 
+                '❌ Troškovnik nije učitan!\n\n' +
+                'Molimo učitajte troškovnik prije generiranja tablice rabata.', 
+                'tablicaRabataStatus'
+            );
+            return;
+        }
+        
+        console.log('🔥 JEBENI DEBUG: Total results available:', results.length);
+        console.log('🔥 JEBENI DEBUG: Results data:', results);
+        
+        // FORCE LOG every result
+        results.forEach((r, i) => {
+            console.log(`🔥 RESULT ${i}:`, {
+                name: r.name,
+                source: r.source, 
+                isFromWeightDatabase: r.isFromWeightDatabase,
+                hasUserPrice: r.hasUserPrice,
+                pricePerPiece: r.pricePerPiece,
+                rb: r.rb
+            });
+        });
+        
+        // Debug all results by categories (only in debug mode)
+        if (typeof Logger !== 'undefined') {
+            const resultsBySource = {};
+            results.forEach((r, i) => {
+                const source = r.source || 'UNKNOWN';
+                if (!resultsBySource[source]) resultsBySource[source] = [];
+                resultsBySource[source].push(r);
+                
+                Logger.debug(`🔍 Result ${i}: ${r.name} | Source: ${source} | Code: ${r.code || 'NO CODE'} | Has Price: ${r.hasUserPrice || false} | Weight DB: ${r.isFromWeightDatabase || false}`);
+            });
+            
+            Logger.debug('📈 Results breakdown by source:');
+            Object.entries(resultsBySource).forEach(([source, items]) => {
+                Logger.debug(`  • ${source}: ${items.length} artikli`);
+            });
+        }
+    
+    // Check if we have results with user prices (ENHANCED: Use izlazna_cijena for Weight database)
+    console.log('🔥 JEBENI DEBUG: Starting resultsWithPrices filter...');
+    console.log('🔥🔥🔥 TOTAL RESULTS TO FILTER:', results.length);
+    
+    const resultsWithPrices = results.filter(r => {
+        console.log(`🔍 JEBENI DEBUG: Processing item: ${r.name} | isFromWeightDatabase: ${r.isFromWeightDatabase}`);
+        
+        // SPECIAL DEBUG FOR WEIGHT DATABASE ITEMS
+        if (r.isFromWeightDatabase === true) {
+            console.log(`🔥🔥🔥 WEIGHT DATABASE ITEM DETECTED: ${r.name}`);
+            console.log(`🔥🔥🔥 Weight DB item full structure:`, {
+                name: r.name,
+                code: r.code,
+                sifra: r.sifra,
+                source: r.source,
+                rb: r.rb,
+                hasUserPrice: r.hasUserPrice,
+                pricePerPiece: r.pricePerPiece,
+                pricePerKg: r.pricePerKg,
+                isFromWeightDatabase: r.isFromWeightDatabase,
+                weight: r.weight,
+                calculatedWeight: r.calculatedWeight
+            });
+            
+            console.log(`🏗️ JEBENI DEBUG: Processing Weight DB item: ${r.name} (RB: ${r.rb})`);
+            const troskovnikItem = getTroskovnikItemForRB(r.rb);
+            console.log(`💰 JEBENI DEBUG: Troskovnik item for RB ${r.rb}:`, troskovnikItem);
+            console.log(`💰 JEBENI DEBUG: Direct price data:`, { hasUserPrice: r.hasUserPrice, pricePerPiece: r.pricePerPiece });
+            
+            // Check BOTH possible price sources:
+            const hasTroskovnikPrice = troskovnikItem && troskovnikItem.izlazna_cijena > 0;
+            const hasDirectPrice = r.hasUserPrice && r.pricePerPiece > 0;
+            const hasValidPrice = hasTroskovnikPrice || hasDirectPrice;
+            
+            console.log(`🔥🔥🔥 WEIGHT DB PRICE ANALYSIS:`);
+            console.log(`  - Troskovnik price: ${hasTroskovnikPrice} (value: ${troskovnikItem?.izlazna_cijena || 0})`);
+            console.log(`  - Direct price: ${hasDirectPrice} (value: ${r.pricePerPiece || 0})`);
+            console.log(`  - Has valid price: ${hasValidPrice}`);
+            console.log(`✅ JEBENI DEBUG: Weight DB item validation:`, {
+                hasTroskovnikPrice,
+                hasDirectPrice, 
+                hasValidPrice,
+                troskovnikPrice: troskovnikItem?.izlazna_cijena || 0,
+                directPrice: r.pricePerPiece || 0,
+                reason: hasValidPrice ? (hasTroskovnikPrice ? 'troškovnik price' : 'direct autocomplete price') : 'no price'
+            });
+            
+            if (hasValidPrice) {
+                console.log(`🎉🔥🔥🔥 WEIGHT DB ITEM ACCEPTED: ${r.name} - WILL BE IN RESULTS WITH PRICES`);
+            } else {
+                console.log(`❌🔥🔥🔥 WEIGHT DB ITEM REJECTED: ${r.name} - NO VALID PRICE`);
+            }
+            
+            return hasValidPrice;
+        }
+        // For all other articles, use existing logic
+        const isValid = r.hasUserPrice && r.pricePerPiece > 0;
+        console.log(`📝 JEBENI DEBUG: Regular item ${r.name} valid: ${isValid} (hasUserPrice: ${r.hasUserPrice}, pricePerPiece: ${r.pricePerPiece})`);
+        return isValid;
+    });
+    
+    console.log('🔥🔥🔥 RESULTAT FILTERA resultsWithPrices:');
+    console.log('🔥🔥🔥 Total items after price filter:', resultsWithPrices.length);
+    console.log('🔥🔥🔥 Weight DB items in resultsWithPrices:', resultsWithPrices.filter(r => r.isFromWeightDatabase === true).length);
+    console.log('🔥🔥🔥 Results with prices data:', resultsWithPrices);
+    
+    // Debug breakdown by type
+    const weightDbItems = resultsWithPrices.filter(r => r.isFromWeightDatabase === true);
+    const regularItems = resultsWithPrices.filter(r => r.isFromWeightDatabase !== true);
+    console.log('🔥🔥🔥 BREAKDOWN:');
+    console.log('  - Weight DB items:', weightDbItems.length, weightDbItems.map(r => r.name));
+    console.log('  - Regular items:', regularItems.length, regularItems.map(r => r.name));
+    
+    console.log('📊 DEBUG: Results with prices:', resultsWithPrices.length);
     
     if (resultsWithPrices.length === 0) {
         showMessage('error', 
@@ -56,28 +202,199 @@ function generateFromResults() {
     
     // console.log('📊 Found results with prices:', resultsWithPrices.length);
     
-    // Filter only our articles (LAGER/URPD) - ENHANCED LOGIC
-    const ourArticlesWithPrices = resultsWithPrices.filter(item => isTrulyOurArticle(item.source, item.code));
+    // ENHANCED LOGIC: Include ALL articles with internal codes (URPD, LAGER, prošlogodišnje cijene, weight database)
+    console.log('🔥 JEBENI DEBUG: Starting validArticlesForTablica filter...');
+    const validArticlesForTablica = resultsWithPrices.filter(item => {
+        console.log(`🔍 JEBENI DEBUG: Filtering for tablica: ${item.name} | isFromWeightDatabase: ${item.isFromWeightDatabase}`);
+        console.log(`🔍 JEBENI DEBUG: Full item structure:`, {
+            name: item.name,
+            code: item.code,
+            sifra: item.sifra,
+            source: item.source,
+            isFromWeightDatabase: item.isFromWeightDatabase,
+            hasUserPrice: item.hasUserPrice,
+            pricePerPiece: item.pricePerPiece,
+            rb: item.rb
+        });
+        
+        // Skip manual entries - they don't have real article codes needed for robni program
+        if (item.isManualEntry) {
+            console.log(`⚠️ JEBENI DEBUG: Skipping manual entry: ${item.name} (no real article code)`);
+            return false;
+        }
+        
+        let includeReason = '';
+        
+        // PRIORITY 1: Traditional "naši artikli" (LAGER/URPD articles that exist in weight database)
+        if (isTrulyOurArticle(item.source, item.code)) {
+            includeReason = `Traditional LAGER/URPD article with weight database entry`;
+            console.log(`✅ JEBENI DEBUG: INCLUDING: ${item.name} -> ${item.code} (${includeReason})`);
+            return true;
+        }
+        
+        // PRIORITY 2: HISTORICAL_LAGER articles (prošlogodišnji + weight database)
+        if (item.source === 'HISTORICAL_LAGER') {
+            includeReason = `HISTORICAL_LAGER article (from prošlogodišnje cijene + weight database)`;
+            console.log(`✅ JEBENI DEBUG: INCLUDING: ${item.name} -> ${item.code} (${includeReason})`);
+            return true;
+        }
+        
+        // PRIORITY 3: Direct Weight Database articles (marked with isFromWeightDatabase flag)
+        if (item.isFromWeightDatabase === true) {
+            console.log(`🔥🔥🔥 WEIGHT DATABASE ITEM IN TABLICA FILTER: ${item.name}`);
+            console.log(`🔥🔥🔥 Weight DB item details:`, {
+                code: item.code,
+                sifra: item.sifra,
+                source: item.source,
+                hasCode: !!(item.code || item.sifra),
+                codeValue: item.code || item.sifra || 'NO CODE'
+            });
+            
+            includeReason = `Direct Weight Database article`;
+            console.log(`✅🔥🔥🔥 WEIGHT DB ITEM WILL BE INCLUDED: ${item.name} -> ${item.code || item.sifra} (${includeReason})`);
+            console.log(`🎉🔥🔥🔥 Weight DB item will be included in tablica!`);
+            return true;
+        }
+        
+        // PRIORITY 4: Articles with internal codes from prošlogodišnje cijene
+        if (item.code && typeof window.getProslogodisnjaCijena === 'function') {
+            const historicalPrice = window.getProslogodisnjaCijena(item.code);
+            if (historicalPrice && historicalPrice > 0) {
+                includeReason = `Article from prošlogodišnje cijene database (€${historicalPrice})`;
+                console.log(`✅ INCLUDING: ${item.name} -> ${item.code} (${includeReason})`);
+                return true;
+            }
+        }
+        
+        // PRIORITY 5: Articles with codes extracted from brackets that exist in weight database
+        if (item.name && typeof window.extractCodeFromBrackets === 'function') {
+            const codeFromBrackets = window.extractCodeFromBrackets(item.name);
+            if (codeFromBrackets && typeof window.weightDatabase !== 'undefined' && 
+                window.weightDatabase.has(codeFromBrackets)) {
+                includeReason = `Article with bracket code from weight database (${codeFromBrackets})`;
+                console.log(`✅ INCLUDING: ${item.name} -> ${codeFromBrackets} (${includeReason})`);
+                return true;
+            }
+        }
+        
+        // PRIORITY 6: LAGER/URPD articles with internal codes (even without weight database)
+        if (item.code && item.source) {
+            const lowerSource = item.source.toLowerCase();
+            if (lowerSource.includes('lager') || lowerSource.includes('urpd')) {
+                // Dodatna provjera da nije već uključen kroz isTrulyOurArticle
+                const hasWeightDbEntry = typeof window.weightDatabase !== 'undefined' && window.weightDatabase.has(item.code);
+                includeReason = hasWeightDbEntry ? 
+                    `LAGER/URPD article with weight database entry (${item.code})` :
+                    `LAGER/URPD article with internal code (no weight DB entry - ${item.code})`;
+                console.log(`✅ INCLUDING: ${item.name} -> ${item.code} (${includeReason})`);
+                return true;
+            }
+        }
+        
+        // PRIORITY 7: External articles with custom PDV that have internal codes
+        if (item.code && item.customPdvStopa && !isTrulyOurArticle(item.source, item.code)) {
+            includeReason = `External article with custom PDV and internal code (${item.customPdvStopa}%)`;
+            if (typeof Logger !== 'undefined') {
+                Logger.debug(`✅ INCLUDING: ${item.name} -> ${item.code} (${includeReason})`);
+            }
+            return true;
+        }
+        
+        // PRIORITY 8: Articles whose code exists directly in weight database HTML table
+        // Check both .code and .sifra properties
+        const itemCode = item.code || item.sifra || item.Code || item.Sifra;
+        
+        console.log(`🔍 PRIORITY 8 DEBUG: Checking ${item.name} - code: ${item.code}, sifra: ${item.sifra}, itemCode: ${itemCode}`);
+        
+        if (itemCode && typeof document !== 'undefined') {
+            const weightsTableBody = document.getElementById('weightsTableBody');
+            if (weightsTableBody) {
+                const tableRows = weightsTableBody.querySelectorAll('tr');
+                console.log(`📊 Found ${tableRows.length} rows in weights table for ${item.name}`);
+                
+                for (const row of tableRows) {
+                    const cells = row.cells;
+                    if (cells && cells.length > 0) {
+                        const cellCode = cells[0].textContent.trim();
+                        if (cellCode === itemCode || 
+                            cellCode === String(itemCode) || 
+                            String(cellCode) === String(itemCode) ||
+                            parseInt(cellCode) === parseInt(itemCode)) {
+                            includeReason = `Article found in weight database HTML table (${itemCode})`;
+                            console.log(`✅ JEBENI DEBUG: INCLUDING via HTML table search: ${item.name} -> ${itemCode} (${includeReason})`);
+                            return true;
+                        }
+                    }
+                }
+                console.log(`❌ PRIORITY 8 DEBUG: Code ${itemCode} not found in weight database HTML table for ${item.name}`);
+            } else {
+                console.log(`❌ PRIORITY 8 DEBUG: Weight table not found for ${item.name}`);
+            }
+        } else {
+            console.log(`❌ PRIORITY 8 DEBUG: No valid code found for ${item.name} - code: ${item.code}, sifra: ${item.sifra}`);
+        }
+        
+        // Log excluded articles for debugging
+        console.log(`❌ JEBENI DEBUG: EXCLUDING: ${item.name} -> ${item.code || 'NO CODE'} | Source: ${item.source} | isFromWeightDatabase: ${item.isFromWeightDatabase} (No internal code or doesn't match criteria)`);
+        return false;
+    });
     
-    if (ourArticlesWithPrices.length === 0) {
+    console.log('🔥🔥🔥 RESULTAT FILTERA validArticlesForTablica:');
+    console.log('🔥🔥🔥 Total valid items for tablica:', validArticlesForTablica.length);
+    console.log('🔥🔥🔥 Weight DB items in validArticlesForTablica:', validArticlesForTablica.filter(r => r.isFromWeightDatabase === true).length);
+    
+    // Debug breakdown by type for tablica
+    const validWeightDbItems = validArticlesForTablica.filter(r => r.isFromWeightDatabase === true);
+    const validRegularItems = validArticlesForTablica.filter(r => r.isFromWeightDatabase !== true);
+    console.log('🔥🔥🔥 TABLICA BREAKDOWN:');
+    console.log('  - Valid Weight DB items:', validWeightDbItems.length, validWeightDbItems.map(r => r.name));
+    console.log('  - Valid Regular items:', validRegularItems.length, validRegularItems.map(r => r.name));
+    
+    console.log('🔥 JEBENI DEBUG: Valid articles for tablica:', validArticlesForTablica.length);
+    console.log('🔥 JEBENI DEBUG: Valid articles data:', validArticlesForTablica);
+    
+    if (validArticlesForTablica.length === 0) {
         showMessage('error', 
-            '❌ Nema LAGER/URPD artikala s cijenama!\n\n' +
-            'Tablica rabata se može generirati samo iz naših artikala s:\n' +
-            '• Šifrom artikla\n' +
-            '• Izvorom "Lager" ili "URPD"\n' +
-            '• Unesenom izlaznom cijenom\n\n' +
-            '💡 Tip: Upisujte cijene za zeleno označene artikle u autocomplete!', 
+            '❌ Nema artikala s internim šiframa za tablicu rabata!\n\n' +
+            '🎯 TABLICA RABATA UKLJUČUJE SVE ARTIKLE S INTERNIM ŠIFRAMA:\n' +
+            '• 🏠 LAGER/URPD artikle (tradicionalni naši artikli)\n' +
+            '• 🏛️ HISTORICAL_LAGER artikle (prošlogodišnji + weight database)\n' +
+            '• ⚖️ Direktne artikle iz Weight Database\n' +
+            '• 📅 Artikle iz prošlogodišnjih cijena\n' +
+            '• 📋 Artikle s šifrom u zagradama "19. (1445)"\n' +
+            '• 🔧 Vanjske artikle s custom PDV i internim šiframa\n\n' +
+            '⚠️ UVJET: Artikli moraju imati unesene cijene!\n' +
+            '⚠️ NAPOMENA: Ručno unesene stavke se ne exportiraju (nemaju prave šifre)\n\n' +
+            '💡 RJEŠENJE:\n' +
+            '1. Dodajte artikle iz URPD, LAGER, prošlogodišnjih cijena ili weight database\n' +
+            '2. Unesite cijene direktno u autocomplete\n' +
+            '3. Pokušajte ponovo generirati tablicu', 
             'tablicaRabataStatus'
         );
         return;
     }
     
-    // Group by code and take cheapest
+    // Group by code and take cheapest - ENHANCED for all valid articles
     const groupedByCode = {};
     
-    ourArticlesWithPrices.forEach(item => {
-        const code = item.code ? item.code.trim() : '';
-        if (!code) return;
+    validArticlesForTablica.forEach(item => {
+        // ENHANCED: Better code extraction for different article types
+        let code = item.code ? item.code.trim() : '';
+        
+        // For articles with brackets, extract code from brackets if original code is missing
+        if (!code && item.name && typeof window.extractCodeFromBrackets === 'function') {
+            code = window.extractCodeFromBrackets(item.name);
+        }
+        
+        // For manual entries, use the manual code
+        if (!code && item.isManualEntry && item.id) {
+            code = item.id.replace('manual-', '').split('-')[0]; // Extract from ID
+        }
+        
+        if (!code) {
+            // console.log(`⚠️ No code found for article: ${item.name}`);
+            return;
+        }
         
         if (!groupedByCode[code]) {
             groupedByCode[code] = [];
@@ -108,14 +425,77 @@ function generateFromResults() {
         // Get troškovnik item for this RB
         const troskovnikItem = getTroskovnikItemForRB(item.rb);
         
-        // NOVA LOGIKA: Provjeri ima li troškovnik stavka težinu = 0
-        const shouldUseOriginalPrice = troskovnikItem && (troskovnikItem.tezina === 0 || troskovnikItem.tezina <= 0);
-        const finalPrice = shouldUseOriginalPrice ? troskovnikItem.izlazna_cijena : item.pricePerPiece;
-        const priceSource = shouldUseOriginalPrice ? 'troškovnik (bez preračuna)' : 'rezultati pretrage';
+        // ENHANCED LOGIKA: Za Weight database artikle koristi najbolju dostupnu cijenu
+        const isWeightDatabaseItem = item.isFromWeightDatabase === true;
         
+        // Determine price source priority for weight database items
+        let finalPrice, priceSource;
+        if (isWeightDatabaseItem) {
+            const hasTroskovnikPrice = troskovnikItem && troskovnikItem.izlazna_cijena > 0;
+            const hasDirectPrice = item.hasUserPrice && item.pricePerPiece > 0;
+            
+            if (hasTroskovnikPrice) {
+                finalPrice = troskovnikItem.izlazna_cijena;
+                priceSource = 'Weight database (izlazna cijena iz troškovnika)';
+            } else if (hasDirectPrice) {
+                finalPrice = item.pricePerPiece;
+                priceSource = 'Weight database (direktno unesena cijena)';
+            } else {
+                finalPrice = 0;
+                priceSource = 'Weight database (nema cijena)';
+            }
+        } else {
+            // For non-weight database items, use original logic
+            const shouldUseOutputPrice = troskovnikItem && (troskovnikItem.tezina === 0 || troskovnikItem.tezina <= 0);
+            finalPrice = shouldUseOutputPrice ? troskovnikItem.izlazna_cijena : item.pricePerPiece;
+            priceSource = shouldUseOutputPrice ? 'troškovnik (bez preračuna)' : 'rezultati pretrage';
+        }
+        
+        // ENHANCED: Better code handling for all article types
+        let finalCode = item.code ? item.code.trim() : '';
+        
+        // Extract code from brackets if needed
+        if (!finalCode && item.name && typeof window.extractCodeFromBrackets === 'function') {
+            finalCode = window.extractCodeFromBrackets(item.name);
+        }
+        
+        // For manual entries, use RB as fallback code
+        if (!finalCode && item.isManualEntry) {
+            finalCode = 'MANUAL-' + item.rb;
+        }
+        
+        // ENHANCED: Determine article type and source for better tracking
+        let articleType = 'standard';
+        let enhancedSource = item.source || 'unknown';
+        
+        // Priority-based type detection (most specific first)
+        if (item.source === 'HISTORICAL_LAGER') {
+            articleType = 'historical_lager';
+            enhancedSource = 'HISTORICAL_LAGER';
+        } else if (item.isFromWeightDatabase === true) {
+            articleType = 'weight_database';
+            enhancedSource = 'WEIGHT DATABASE';
+        } else if (item.name && typeof window.extractCodeFromBrackets === 'function' && 
+                   window.extractCodeFromBrackets(item.name) && 
+                   typeof window.weightDatabase !== 'undefined' && 
+                   window.weightDatabase.has(window.extractCodeFromBrackets(item.name))) {
+            articleType = 'bracket_code';
+            enhancedSource = 'BAZA TEŽINA (zagrade)';
+        } else if (isTrulyOurArticle(item.source, item.code)) {
+            articleType = 'our_article';
+            enhancedSource = item.source;
+        } else if (typeof window.getProslogodisnjaCijena === 'function' && 
+                   window.getProslogodisnjaCijena(finalCode)) {
+            articleType = 'historical';
+            enhancedSource = 'PROŠLOGODIŠNJE CIJENE';
+        } else if (item.customPdvStopa) {
+            articleType = 'external_pdv';
+            enhancedSource = item.source + ' (custom PDV)';
+        }
+
         const rabataEntry = {
             id: index + 1,
-            sifra_artikla: item.code.trim(),
+            sifra_artikla: finalCode,
             naziv_artikla: item.name,
             jedinica_mjere: item.unit,
             cijena: finalPrice, // Koristi originalnu cijenu iz troškovnika ako je težina = 0
@@ -125,19 +505,33 @@ function generateFromResults() {
             kolicina_troskovnik: troskovnikItem ? troskovnikItem.trazena_kolicina : 1,
             
             // Enhanced specific fields
-            dobavljac: item.supplier,
-            izvor: item.source,
+            dobavljac: item.supplier || 'N/A',
+            izvor: enhancedSource,
             calculation_source: 'enhanced_results',
-            price_formula: shouldUseOriginalPrice ? 
-                `Originalno iz troškovnika: €${finalPrice.toFixed(2)} (težina = 0)` :
-                `Direktno uneseno: €${finalPrice.toFixed(2)}`,
+            article_type: articleType, // NEW: Track article type
+            price_formula: priceSource.includes('troškovnik') ? 
+                `Iz troškovnika: €${finalPrice.toFixed(2)} (${priceSource})` :
+                `Direktno uneseno: €${finalPrice.toFixed(2)} (${priceSource})`,
             weight_used: item.calculatedWeight || item.weight || 0,
-            price_per_kg: shouldUseOriginalPrice ? 0 : (item.pricePerKg || 0) // Nema €/kg ako nema težine
+            price_per_kg: (finalPrice > 0 && (item.calculatedWeight || item.weight || 0) > 0) ? 
+                (finalPrice / (item.calculatedWeight || item.weight)) : 0
         };
         
         tablicaRabata.push(rabataEntry);
         // console.log(`✅ Added enhanced entry ${index + 1}: ${rabataEntry.sifra_artikla} - ${rabataEntry.naziv_artikla}`);
     });
+    
+    console.log('🔥🔥🔥 FINALNA TABLICA RABATA GENERIRANA:');
+    console.log('🔥🔥🔥 Total entries in tablica rabata:', tablicaRabata.length);
+    console.log('🔥🔥🔥 Weight DB entries in tablica rabata:', tablicaRabata.filter(item => item.article_type === 'weight_database').length);
+    console.log('🔥🔥🔥 Full tablica rabata data:', tablicaRabata);
+    
+    // Debug breakdown of final tablica
+    const finalWeightDbItems = tablicaRabata.filter(item => item.article_type === 'weight_database');
+    const finalOtherItems = tablicaRabata.filter(item => item.article_type !== 'weight_database');
+    console.log('🔥🔥🔥 FINAL TABLICA BREAKDOWN:');
+    console.log('  - Weight DB entries:', finalWeightDbItems.length, finalWeightDbItems.map(r => r.naziv_artikla));
+    console.log('  - Other entries:', finalOtherItems.length, finalOtherItems.map(r => r.naziv_artikla));
     
     // Sort by RB then by šifra
     tablicaRabata.sort((a, b) => {
@@ -150,23 +544,67 @@ function generateFromResults() {
     // Update display
     updateTablicaRabataDisplay();
     
-    // Show success message
+    // Show enhanced success message with breakdown by article type
     const totalValue = tablicaRabata.reduce((sum, item) => sum + (item.cijena * item.kolicina_troskovnik), 0);
     
+    // Count articles by type (excluding manual entries)
+    const typeBreakdown = {
+        our_article: tablicaRabata.filter(item => item.article_type === 'our_article').length,
+        historical_lager: tablicaRabata.filter(item => item.article_type === 'historical_lager').length,
+        weight_database: tablicaRabata.filter(item => item.article_type === 'weight_database').length,
+        bracket_code: tablicaRabata.filter(item => item.article_type === 'bracket_code').length,
+        historical: tablicaRabata.filter(item => item.article_type === 'historical').length,
+        external_pdv: tablicaRabata.filter(item => item.article_type === 'external_pdv').length
+    };
+    
+    let breakdownText = '';
+    if (typeBreakdown.our_article > 0) breakdownText += `🏠 Tradicionalni LAGER/URPD: ${typeBreakdown.our_article}\n`;
+    if (typeBreakdown.historical_lager > 0) breakdownText += `🏛️ HISTORICAL_LAGER (prošlogodišnji + weight DB): ${typeBreakdown.historical_lager}\n`;
+    if (typeBreakdown.weight_database > 0) breakdownText += `⚖️ Direktno iz Weight Database: ${typeBreakdown.weight_database}\n`;
+    if (typeBreakdown.historical > 0) breakdownText += `📅 Iz prošlogodišnjih cijena: ${typeBreakdown.historical}\n`;
+    if (typeBreakdown.bracket_code > 0) breakdownText += `📋 Šifre iz zagrada: ${typeBreakdown.bracket_code}\n`;
+    if (typeBreakdown.external_pdv > 0) breakdownText += `🔧 Vanjski s PDV: ${typeBreakdown.external_pdv}\n`;
+    
     showMessage('success', 
-        `✅ Tablica rabata generirana iz enhanced rezultata!\n\n` +
+        `✅ ENHANCED Tablica rabata generirana s SVIM artiklima s internim šiframa!\n\n` +
         `📊 Ukupno stavki: ${tablicaRabata.length}\n` +
-        `💰 Ukupna vrijednost: €${totalValue.toFixed(2)}\n` +
-        `🏠 Samo naši artikli (LAGER/URPD)\n` +
-        `🎯 S direktno unesenim cijenama\n` +
-        `⚡ Workflow completed!`, 
+        `💰 Ukupna vrijednost: €${totalValue.toFixed(2)}\n\n` +
+        `🎯 UKLJUČENI TIPOVI ARTIKALA S INTERNIM ŠIFRAMA:\n${breakdownText}\n` +
+        `✅ Sada uključuje sve artikle iz:\n` +
+        `   • URPD i LAGER (tradicionalni)\n` +
+        `   • Prošlogodišnje cijene\n` +
+        `   • Weight Database (s cijenama iz troškovnika ILI direktno unesenim)\n` +
+        `   • HISTORICAL_LAGER kombinacije\n` +
+        `   • Artikle s formatom "19. (šifra)" + direktno unesene cijene\n\n` +
+        `⚠️ Ručno unesene stavke se ne exportiraju (nemaju prave šifre)\n` +
+        `⚡ Enhanced workflow s poboljšanom logikom completed!`, 
         'tablicaRabataStatus'
     );
     
     // Switch to tablica rabata tab
     showTab('tablicaRabata');
     
-    // console.log('✅ Enhanced tablica rabata generation completed:', tablicaRabata.length, 'entries');
+    if (typeof Logger !== 'undefined') {
+        Logger.debug('✅ Enhanced tablica rabata generation completed:', tablicaRabata.length, 'entries');
+    }
+    
+    } catch (error) {
+        if (typeof Logger !== 'undefined') {
+            Logger.error('❌ Greška u generateFromResults:', error);
+        } else {
+            console.error('❌ Greška u generateFromResults:', error);
+        }
+        
+        showMessage('error', 
+            `❌ Greška pri generiranju tablice rabata!\n\n` +
+            `Razlog: ${error.message || 'Nepoznata greška'}\n\n` +
+            `💡 Pokušajte:\n` +
+            `1. Provjerite da li imate artikle s cijenama u rezultatima\n` +
+            `2. Provjerite da li je troškovnik učitan\n` +
+            `3. Osvježite stranicu i pokušajte ponovo`, 
+            'tablicaRabataStatus'
+        );
+    }
 }
 
 /**
@@ -190,13 +628,17 @@ function updateTablicaRabataDisplay() {
                 <h3>Nema generiranih podataka</h3>
                 <p>Kliknite "Generiraj iz rezultata" za kreiranje tablice rabata.</p>
                 <div class="info-msg" style="margin-top: 20px; text-align: left;">
-                    <strong>🆕 ENHANCED - Generiranje iz rezultata:</strong><br>
-                    • Uzimaju se samo artikli iz rezultata s izvorom "Lager" ili "URPD"<br>
-                    • Koriste se izlazne cijene koje ste upisali direktno u autocomplete<br>
-                    • Automatska kalkulacija prema €/kg koristeći težine iz troškovnika<br>
-                    • Za istu šifru uzima se najjeftinija stavka<br>
-                    • Direktna sinkronizacija s troškovnikom<br>
-                    • Koristi profesionalno generirane težine<br>
+                    <strong>🎯 ENHANCED - Svi artikli s internim šiframa:</strong><br>
+                    • 🏠 LAGER/URPD artikli (traditionalni naši artikli)<br>
+                    • 🏛️ HISTORICAL_LAGER artikli (prošlogodišnji + weight database)<br>
+                    • ⚖️ Direktni artikli iz Weight Database<br>
+                    • 📅 Artikli iz prošlogodišnjih cijena<br>
+                    • 📋 Artikli s šiframa u zagradama<br>
+                    • 🔧 Vanjski artikli s custom PDV i internim šiframa<br><br>
+                    <strong>💡 Kako koristiti:</strong><br>
+                    • Dodajte artikle iz bilo kojeg izvora<br>
+                    • Unesite cijene direktno u autocomplete<br>
+                    • Kliknite "Generiraj iz rezultata"<br>
                     • ⚡ Workflow skraćen na 1 korak!
                 </div>
             </div>
@@ -506,6 +948,19 @@ function exportTablicaRabataExcel() {
     ];
     ws['!cols'] = wscols;
     
+    // ENHANCED: Add Excel formulas to calculation columns
+    for (let rowIndex = 2; rowIndex <= tablicaRabata.length + 1; rowIndex++) {
+        // I: Ukupno (Cijena × Količina) = D × H
+        const ukupnoFormula = `D${rowIndex}*H${rowIndex}`;
+        ws[`I${rowIndex}`] = createExcelFormulaCell(ukupnoFormula, ws[`I${rowIndex}`]?.v || 0);
+        
+        // O: VPC/kg (Cijena / Težina) = D / N
+        if (ws[`N${rowIndex}`] && ws[`N${rowIndex}`].v && ws[`N${rowIndex}`].v > 0) {
+            const vpcFormula = `D${rowIndex}/N${rowIndex}`;
+            ws[`O${rowIndex}`] = createExcelFormulaCell(vpcFormula, ws[`O${rowIndex}`]?.v || 0);
+        }
+    }
+    
     // Add worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, 'Enhanced Tablica Rabata');
     
@@ -673,7 +1128,15 @@ let selectedResults = window.selectedResults;
 // ===== EXPOSE ALL ENHANCED FUNCTIONS GLOBALLY =====
 
 // Tablica Rabata Enhanced Functions
+console.log('🔥🔥🔥🔥🔥 EXPORTIRAM generateFromResults FUNKCIJU!');
 window.generateFromResults = generateFromResults;
+console.log('🔥🔥🔥🔥🔥 generateFromResults FUNKCIJA EXPORTIRANA!', typeof window.generateFromResults);
+
+// Test function to verify this file is loaded
+window.testEnhancedFunctionsLoaded = function() {
+    console.log('🔥🔥🔥🔥🔥 ENHANCED-FUNCTIONS.JS JE UČITAN!');
+    return true;
+};
 window.updateTablicaRabataDisplay = updateTablicaRabataDisplay;
 window.updateTablicaRabataItem = updateTablicaRabataItem;
 window.removeTablicaRabataItem = removeTablicaRabataItem;
@@ -876,3 +1339,38 @@ window.getFirstChoiceCustomArticle = getFirstChoiceCustomArticle;
 window.getBadgeClassForCustom = getBadgeClassForCustom;
 window.formatCustomArticleName = formatCustomArticleName;
 window.countCustomArticles = countCustomArticles;
+
+// JEBENA TEST FUNKCIJA - pozovite iz konzole
+window.testJebeniResults = function() {
+    console.log('🔥🔥🔥 JEBENI TEST RESULTS:');
+    console.log('window.results:', window.results);
+    console.log('results length:', window.results?.length);
+    console.log('window.troskovnik:', window.troskovnik?.length);
+    console.log('generateFromResults function exists:', typeof window.generateFromResults);
+    
+    if (window.results && window.results.length > 0) {
+        console.log('🔥 PRVI REZULTAT:', window.results[0]);
+        
+        // Test weight database results
+        const weightDbResults = window.results.filter(r => r.isFromWeightDatabase === true);
+        console.log('🔥 WEIGHT DATABASE RESULTS:', weightDbResults.length);
+        weightDbResults.forEach((r, i) => {
+            console.log(`  WDB ${i}:`, {
+                name: r.name,
+                source: r.source,
+                isFromWeightDatabase: r.isFromWeightDatabase,
+                hasUserPrice: r.hasUserPrice,
+                pricePerPiece: r.pricePerPiece
+            });
+        });
+    }
+    
+    return 'Test completed - check logs above';
+};
+
+console.log('🔥🔥🔥🔥🔥 ENHANCED-FUNCTIONS.JS ZAVRŠAVA USPJEŠNO!');
+
+} catch (error) {
+    console.error('🚨🚨🚨 GREŠKA U ENHANCED-FUNCTIONS.JS:', error);
+    console.error('🚨🚨🚨 Stack trace:', error.stack);
+}

@@ -315,7 +315,10 @@ function updateResultsDisplay() {
                 // Define row styling based on article type
                 let rowStyle = '';
                 if (isSelected) {
-                    if (isOurArticle) {
+                    if (item.isManualEntry) {
+                        // Manual entries - orange theme
+                        rowStyle = 'background: linear-gradient(90deg, #fef3c7 0%, #fffbeb 100%); border-left: 5px solid #f59e0b; line-height: 0.9; height: 35px;';
+                    } else if (isOurArticle) {
                         // Our articles - green theme
                         rowStyle = 'background: linear-gradient(90deg, #dcfce7 0%, #f0fdf4 100%); border-left: 5px solid #16a34a; line-height: 0.9; height: 35px;';
                     } else {
@@ -323,7 +326,10 @@ function updateResultsDisplay() {
                         rowStyle = 'background: linear-gradient(90deg, #ede9fe 0%, #f3f4f6 100%); border-left: 5px solid #7c3aed; line-height: 0.9; height: 35px;';
                     }
                 } else {
-                    if (isOurArticle) {
+                    if (item.isManualEntry) {
+                        // Manual entries unselected - light orange
+                        rowStyle = 'background: #fffbeb; opacity: 0.8; line-height: 0.9; height: 35px;';
+                    } else if (isOurArticle) {
                         // Our articles unselected - light green
                         rowStyle = 'background: #f7fee7; opacity: 0.8; line-height: 0.9; height: 35px;';
                     } else {
@@ -427,7 +433,15 @@ function updateResultsDisplay() {
                     lastYearCell;
                 
                 // Add PDV column with consistent styling
-                if (!isOurArticle) {
+                if (item.isManualEntry) {
+                    // Manual entries - editable PDV with orange theme (distinguishable from external)
+                    html += '<td style="padding: 1px; text-align: center; vertical-align: middle;">' +
+                        '<select onchange="updateCustomArticlePDV(\'' + resultKey + '\', this.value)" ' +
+                        'style="width: 45px; padding: 1px; border: 2px solid #f59e0b; border-radius: 3px; font-size: 13px; background: white; color: #f59e0b; font-weight: 700; line-height: 0.9;">' +
+                        '<option value="25"' + (item.customPdvStopa === 25 ? ' selected' : '') + '>25%</option>' +
+                        '<option value="5"' + (item.customPdvStopa === 5 ? ' selected' : '') + '>5%</option>' +
+                        '</select></td>';
+                } else if (!isOurArticle) {
                     // All external articles - editable PDV with purple theme
                     html += '<td style="padding: 1px; text-align: center; vertical-align: middle;">' +
                         '<select onchange="updateCustomArticlePDV(\'' + resultKey + '\', this.value)" ' +
@@ -583,19 +597,21 @@ function updateResultWeight(resultKey, newWeight) {
 }
 
 /**
- * Updates PDV stopa for ALL external articles that are not ours
+ * Updates PDV stopa for external articles and manual entries
  */
 function updateCustomArticlePDV(resultKey, newPdvStopa) {
     const [id, rb] = resultKey.split('-');
     const result = results.find(r => r.id == id && r.rb == rb);
     
-    if (result && !isTrulyOurArticle(result.source, result.code)) {
+    // Allow PDV changes for external articles OR manual entries
+    if (result && (!isTrulyOurArticle(result.source, result.code) || result.isManualEntry)) {
         result.customPdvStopa = parseInt(newPdvStopa) || 25;
         
         // Show success message
         if (typeof showMessage === 'function') {
+            const entryType = result.isManualEntry ? 'ručno unesenu stavku' : 'vanjski artikl';
             showMessage('success', 
-                `PDV stopa ažurirana za "${result.name}": ${result.customPdvStopa}%`, 
+                `PDV stopa ažurirana za ${entryType} "${result.name}": ${result.customPdvStopa}%`, 
                 'resultsStatus'
             );
         }

@@ -30,14 +30,16 @@ function updateTablicaRabataDisplay() {
                 <h3>Nema generiranih podataka</h3>
                 <p>Kliknite "Generiraj iz rezultata" za kreiranje tablice rabata.</p>
                 <div class="info-msg" style="margin-top: 20px; text-align: left;">
-                    <strong>🆕 ENHANCED - Generiranje iz rezultata:</strong><br>
-                    • Uzimaju se samo artikli iz rezultata s izvorom "Lager" ili "URPD"<br>
-                    • Koriste se izlazne cijene koje ste upisali direktno u autocomplete<br>
-                    • Automatska kalkulacija prema €/kg koristeći težine iz troškovnika<br>
+                    <strong>🛠️ POPRAVLJENA - Generiranje za robni program:</strong><br>
+                    • <strong>🏠 Naši artikli</strong>: LAGER/URPD s direktno unesenim cijenama<br>
+                    • <strong>🏛️ HISTORICAL_LAGER</strong>: Historical + Weight database artikli<br>
+                    • <strong>⚖️ Weight Database</strong>: Direktno iz baze težina<br>
+                    • <strong>📋 Šifre u zagradama</strong>: "19. (1445)" format<br>
+                    • <strong>📅 Prošlogodišnje cijene</strong>: Importirani historical data<br>
+                    • <strong>🔧 Vanjski artikli</strong>: S custom PDV postavkama<br>
+                    • <strong>⚠️ ISKLJUČENO: Ručno unesene stavke</strong> (nemaju prave šifre)<br>
                     • Za istu šifru uzima se najjeftinija stavka<br>
-                    • Direktna sinkronizacija s troškovnikom<br>
-                    • Koristi profesionalno generirane težine<br>
-                    • ⚡ Workflow skraćen na 1 korak!
+                    • ✅ Sada UKLJUČUJE Weight database i HISTORICAL_LAGER!
                 </div>
             </div>
         `;
@@ -63,10 +65,10 @@ function updateTablicaRabataDisplay() {
         <div style="margin-bottom: 20px; padding: 16px; background: #f3f4f6; border-radius: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <strong>Enhanced Tablica rabata:</strong> ${tablicaRabata.length} stavki • 
+                    <strong>PROŠIRENA Tablica rabata:</strong> ${tablicaRabata.length} stavki • 
                     <strong>Šifre:</strong> ${uniqueCodes} • 
                     <strong>Grupe:</strong> ${groups} • 
-                    <strong>Enhanced:</strong> ${enhancedItems}
+                    <strong>Svi tipovi:</strong> ${enhancedItems}
                 </div>
                 <div style="text-align: right;">
                     <div style="font-size: 14px; color: #6b7280;">Ukupna vrijednost</div>
@@ -75,7 +77,7 @@ function updateTablicaRabataDisplay() {
                 </div>
             </div>
             <div style="font-size: 12px; color: #6b7280; margin-top: 8px;">
-                📊 Generirano iz enhanced rezultata s direktno unesenim cijenama
+                📊 Generirano iz PROŠIRENIH rezultata - uključuje SVE tipove artikala
             </div>
         </div>
         
@@ -107,16 +109,62 @@ function updateTablicaRabataDisplay() {
         const ukupno = item.cijena * item.kolicina_troskovnik;
         const rowStyle = index % 2 === 0 ? 'background: #f9fafb;' : '';
         
-        // Enhanced color coding - using purple theme
+        // ENHANCED: Article type-based visual coding
         const groupColor = getGroupColor(item.redni_broj_grupe);
         const isEnhanced = item.calculation_source === 'enhanced_results';
-        const enhancedStyle = isEnhanced ? 'border-left: 3px solid #7c3aed;' : '';
+        
+        // Article type styling and badges
+        let typeColor = '#7c3aed'; // default purple
+        let typeBadge = '⚡';
+        let typeText = 'ENHANCED';
+        
+        if (item.article_type) {
+            switch (item.article_type) {
+                case 'our_article':
+                    typeColor = '#16a34a'; // green
+                    typeBadge = '🏠';
+                    typeText = 'NAŠI';
+                    break;
+                case 'historical_lager':
+                    typeColor = '#0284c7'; // darker blue
+                    typeBadge = '🏛️';
+                    typeText = 'HIST_LAGER';
+                    break;
+                case 'weight_database':
+                    typeColor = '#059669'; // emerald
+                    typeBadge = '⚖️';
+                    typeText = 'WEIGHT_DB';
+                    break;
+                case 'bracket_code':
+                    typeColor = '#f59e0b'; // orange
+                    typeBadge = '📋';
+                    typeText = 'ZAGRADE';
+                    break;
+                case 'historical':
+                    typeColor = '#0ea5e9'; // blue
+                    typeBadge = '📅';
+                    typeText = 'PROŠLE';
+                    break;
+                case 'external_pdv':
+                    typeColor = '#7c3aed'; // purple
+                    typeBadge = '🔧';
+                    typeText = 'PDV';
+                    break;
+                default:
+                    typeColor = '#6b7280'; // gray
+                    typeBadge = '❓';
+                    typeText = 'OTHER';
+                    break;
+            }
+        }
+        
+        const enhancedStyle = isEnhanced ? `border-left: 3px solid ${typeColor};` : '';
         
         html += `
             <tr style="${rowStyle} ${enhancedStyle}">
                 <td>
-                    <strong style="color: #7c3aed;">${item.sifra_artikla}</strong>
-                    ${isEnhanced ? '<div style="font-size: 8px; color: #7c3aed; font-weight: bold;">⚡ ENHANCED</div>' : ''}
+                    <strong style="color: ${typeColor};">${item.sifra_artikla}</strong>
+                    ${isEnhanced ? `<div style="font-size: 8px; color: ${typeColor}; font-weight: bold;">${typeBadge} ${typeText}</div>` : ''}
                 </td>
                 <td title="${item.naziv_artikla}">
                     <div style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
@@ -130,10 +178,10 @@ function updateTablicaRabataDisplay() {
                         step="0.01" 
                         value="${item.cijena.toFixed(2)}"
                         onchange="updateTablicaRabataItem(${item.id}, 'cijena', this.value)"
-                        style="width: 100px; padding: 4px; border: 1px solid ${isEnhanced ? '#7c3aed' : '#d1d5db'}; border-radius: 4px; font-size: 12px; font-weight: bold; ${isEnhanced ? 'background: #f3f4f6; color: #7c3aed;' : ''}"
-                        title="Editabilna cijena za tablicu ${isEnhanced ? '(Enhanced)' : ''}"
+                        style="width: 100px; padding: 4px; border: 1px solid ${isEnhanced ? typeColor : '#d1d5db'}; border-radius: 4px; font-size: 12px; font-weight: bold; ${isEnhanced ? `background: #f3f4f6; color: ${typeColor};` : ''}"
+                        title="Editabilna cijena za tablicu ${isEnhanced ? `(${typeText})` : ''}"
                     >
-                    ${isEnhanced ? '<div style="font-size: 8px; color: #7c3aed;">Direktno uneseno</div>' : ''}
+                    ${isEnhanced ? `<div style="font-size: 8px; color: ${typeColor};">${typeText} tip</div>` : ''}
                 </td>
                 <td>
                     <span style="background: ${groupColor}; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">
@@ -420,10 +468,51 @@ function isTrulyOurArticle(source, code) {
  * Generates tablica rabata from results with user prices
  */
 function generateFromResults() {
-    // console.log('🎯 Generating tablica rabata from enhanced results...');
+    console.log('🚨🚨🚨 STARA FUNKCIJA IZ TABLICARABATA.JS SE POZIVA!!!');
+    console.log('🚨🚨🚨 Ovo znači da se nova funkcija iz enhanced-functions.js NE KORISTI!');
+    console.log('🎯 Generating tablica rabata from enhanced results...');
     
-    // Check if we have results with user prices
-    const resultsWithPrices = results.filter(r => r.hasUserPrice && r.pricePerPiece > 0);
+    // DEBUG: Prikaži sve results
+    console.log('🔥🔥🔥 SVIH RESULTS UKUPNO:', results?.length || 0);
+    if (results && results.length > 0) {
+        console.log('🔥🔥🔥 SVI RESULTS:');
+        results.forEach((r, index) => {
+            console.log(`  [${index}] ${r.name} | isFromWeightDatabase: ${r.isFromWeightDatabase} | hasUserPrice: ${r.hasUserPrice} | pricePerPiece: ${r.pricePerPiece} | source: ${r.source}`);
+        });
+        
+        // Posebno prikaži Weight Database artikle
+        const weightDbResults = results.filter(r => r.isFromWeightDatabase === true);
+        console.log('🔥🔥🔥 WEIGHT DATABASE RESULTS:', weightDbResults.length);
+        weightDbResults.forEach((r, index) => {
+            console.log(`  [${index}] WEIGHT DB: ${r.name} | hasUserPrice: ${r.hasUserPrice} | pricePerPiece: ${r.pricePerPiece}`);
+        });
+    }
+    
+    // Check if we have results with user prices OR Weight Database articles
+    console.log('🔥🔥🔥 FILTERING FOR RESULTS WITH PRICES (INCLUDING WEIGHT DATABASE)...');
+    const resultsWithPrices = results.filter(r => {
+        // NOVA LOGIKA: Uključi Weight Database artikle čak i bez cijene
+        const isWeightDatabaseArticle = r.isFromWeightDatabase === true;
+        const hasRegularPrice = r.hasUserPrice && r.pricePerPiece > 0;
+        
+        // Provjeri troškovnik cijenu za Weight Database artikle
+        let hasTroskovnikPrice = false;
+        if (isWeightDatabaseArticle && r.rb) {
+            const troskovnikItem = getTroskovnikItemForRB(r.rb);
+            hasTroskovnikPrice = troskovnikItem && troskovnikItem.izlazna_cijena > 0;
+        }
+        
+        const shouldInclude = hasRegularPrice || (isWeightDatabaseArticle && (hasRegularPrice || hasTroskovnikPrice));
+        
+        if (!shouldInclude) {
+            console.log(`❌ FILTERED OUT: ${r.name} | hasUserPrice: ${r.hasUserPrice} | pricePerPiece: ${r.pricePerPiece} | isFromWeightDatabase: ${r.isFromWeightDatabase} | hasTroskovnikPrice: ${hasTroskovnikPrice}`);
+        } else {
+            console.log(`✅ INCLUDED: ${r.name} | hasUserPrice: ${r.hasUserPrice} | pricePerPiece: ${r.pricePerPiece} | isFromWeightDatabase: ${r.isFromWeightDatabase} | hasTroskovnikPrice: ${hasTroskovnikPrice} | reason: ${isWeightDatabaseArticle ? 'Weight Database' : 'Regular price'}`);
+        }
+        return shouldInclude;
+    });
+    
+    console.log('🔥🔥🔥 RESULTS WITH PRICES UKUPNO:', resultsWithPrices.length);
     
     if (resultsWithPrices.length === 0) {
         showMessage('error', 
@@ -440,17 +529,31 @@ function generateFromResults() {
     
     // console.log('📊 Found results with prices:', resultsWithPrices.length);
     
-    // Filter only our articles (LAGER/URPD) - ENHANCED LOGIC
-    const ourArticlesWithPrices = resultsWithPrices.filter(item => isTrulyOurArticle(item.source, item.code));
+    // Filter only our articles (LAGER/URPD) AND Weight Database articles - ENHANCED LOGIC
+    console.log('🔥🔥🔥 FILTERING FOR VALID ARTICLES FOR TABLICA...');
+    const ourArticlesWithPrices = resultsWithPrices.filter(item => {
+        const isOurArticle = isTrulyOurArticle(item.source, item.code);
+        const isWeightDatabaseArticle = item.isFromWeightDatabase === true;
+        
+        const shouldInclude = isOurArticle || isWeightDatabaseArticle;
+        
+        if (shouldInclude) {
+            console.log(`✅ VALID FOR TABLICA: ${item.name} | source: ${item.source} | isFromWeightDatabase: ${item.isFromWeightDatabase} | reason: ${isWeightDatabaseArticle ? 'Weight Database article' : 'Our article (LAGER/URPD)'}`);
+        } else {
+            console.log(`❌ NOT VALID FOR TABLICA: ${item.name} | source: ${item.source} | isFromWeightDatabase: ${item.isFromWeightDatabase}`);
+        }
+        
+        return shouldInclude;
+    });
     
     if (ourArticlesWithPrices.length === 0) {
         showMessage('error', 
-            '❌ Nema LAGER/URPD artikala s cijenama!\n\n' +
-            'Tablica rabata se može generirati samo iz naših artikala s:\n' +
-            '• Šifrom artikla\n' +
-            '• Izvorom "Lager" ili "URPD"\n' +
-            '• Unesenom izlaznom cijenom\n\n' +
-            '💡 Tip: Upisujte cijene za zeleno označene artikle u autocomplete!', 
+            '❌ Nema LAGER/URPD/WEIGHT DATABASE artikala s cijenama!\n\n' +
+            'Tablica rabata se može generirati iz:\n' +
+            '• 🏠 LAGER/URPD artikala s unesenom cijenom\n' +
+            '• ⚖️ WEIGHT DATABASE artikala s kodom u zagradi (1995)\n' +
+            '• 📝 Artikala s šifrom i izvorom\n\n' +
+            '💡 Tip: Upisujte cijene za zeleno označene artikle u autocomplete ili dodajte artikle iz Tablice težina!', 
             'tablicaRabataStatus'
         );
         return;
@@ -530,7 +633,7 @@ function generateFromResults() {
         `✅ Tablica rabata generirana iz enhanced rezultata!\n\n` +
         `📊 Ukupno stavki: ${tablicaRabata.length}\n` +
         `💰 Ukupna vrijednost: €${totalValue.toFixed(2)}\n` +
-        `🏠 Samo naši artikli (LAGER/URPD)\n` +
+        `🏠 Naši artikli (LAGER/URPD/WEIGHT DATABASE)\n` +
         `🎯 S direktno unesenim cijenama\n` +
         `⚡ Workflow completed!`, 
         'tablicaRabataStatus'
@@ -608,7 +711,23 @@ window.removeTablicaRabataItem = removeTablicaRabataItem;
 window.exportTablicaRabataCSV = exportTablicaRabataCSV;
 window.exportTablicaRabataExcel = exportTablicaRabataExcel;
 window.clearTablicaRabata = clearTablicaRabata;
-window.generateFromResults = generateFromResults;
+// EKSPLICITNO BRISANJE STARE FUNKCIJE - koristimo novu iz enhanced-functions.js
+console.log('🔥🔥🔥🔥🔥 TABLICARABATA.JS SE UČITAVA - BRIŠEM STARU FUNKCIJU!');
+console.log('🔥🔥🔥🔥🔥 generateFromResults type PRIJE brisanja:', typeof window.generateFromResults);
+
+// Provjeri je li to naša nova funkcija s debug kodom
+if (typeof window.generateFromResults !== 'undefined') {
+    const funcStr = window.generateFromResults.toString();
+    if (funcStr.includes('JEBENI KRITIČNI DEBUG')) {
+        console.log('🔥🔥🔥🔥🔥 NOVA FUNKCIJA JE VEĆ UČITANA - NE BRIŠEM!');
+    } else {
+        console.log('🔥🔥🔥🔥🔥 PRONAŠAO STARU FUNKCIJU - BRIŠEM JU...');
+        delete window.generateFromResults;
+        console.log('🔥🔥🔥🔥🔥 generateFromResults type NAKON brisanja:', typeof window.generateFromResults);
+    }
+}
+
+// window.generateFromResults = generateFromResults; // COMMENTED OUT: Using enhanced version from enhanced-functions.js
 window.getGroupColor = getGroupColor;
 window.getTroskovnikItemForRB = getTroskovnikItemForRB;
 window.showMissingRBs = showMissingRBs;
@@ -687,6 +806,19 @@ function exportTablicaRabataExcel() {
             {wch: 30}, {wch: 12}, {wch: 12}, {wch: 15}
         ];
         ws['!cols'] = wscols;
+        
+        // ENHANCED: Add Excel formulas to calculation columns
+        for (let rowIndex = 2; rowIndex <= tablicaRabata.length + 1; rowIndex++) {
+            // I: Ukupno (Cijena × Količina) = D × H
+            const ukupnoFormula = `D${rowIndex}*H${rowIndex}`;
+            ws[`I${rowIndex}`] = createExcelFormulaCell(ukupnoFormula, ws[`I${rowIndex}`]?.v || 0);
+            
+            // O: VPC/kg (Cijena / Težina) = D / N
+            if (ws[`N${rowIndex}`] && ws[`N${rowIndex}`].v && ws[`N${rowIndex}`].v > 0) {
+                const vpcFormula = `D${rowIndex}/N${rowIndex}`;
+                ws[`O${rowIndex}`] = createExcelFormulaCell(vpcFormula, ws[`O${rowIndex}`]?.v || 0);
+            }
+        }
         
         // Add the main worksheet
         XLSX.utils.book_append_sheet(wb, ws, 'Enhanced Tablica Rabata');

@@ -5,7 +5,10 @@
   "main": "index.html",
   "scripts": {
     "start": "python -m http.server 8000",
-    "serve": "python -m http.server 8000"
+    "serve": "python -m http.server 8000",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui"
   },
   "keywords": [
     "procurement",
@@ -20,7 +23,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/trazilica-proizvoda-troskovnik.git"
+    "url": "git+https://github.com/yourusername/trazilica-proizvoda-troskovnik.git"
   },
   "homepage": "https://github.com/yourusername/trazilica-proizvoda-troskovnik#readme",
   "engines": {
@@ -31,6 +34,15 @@
     "not ie 11",
     "not op_mini all"
   ],
-  "devDependencies": {},
-  "dependencies": {}
+  "devDependencies": {
+    "@playwright/test": "^1.54.2"
+  },
+  "dependencies": {
+    "fsevents": "^2.3.2",
+    "playwright": "^1.54.2",
+    "playwright-core": "^1.54.2"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/trazilica-proizvoda-troskovnik/issues"
+  }
 }

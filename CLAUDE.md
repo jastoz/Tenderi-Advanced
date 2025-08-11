@@ -24,6 +24,7 @@ The application follows a modular JavaScript architecture with these key files:
 - `ui.js` - UI utilities and event handling
 - `state-manager.js` - Application state save/load functionality
 - `utils.js` - General utility functions
+- `logger.js` - Application logging and debugging utilities
 
 ### Key Features
 - **Enhanced Search**: Autocomplete with direct price input and range search (e.g., "Ajvar 300-1000" for 300-1000g products)
@@ -40,14 +41,40 @@ Since this is a client-side JavaScript application without a build system:
 
 ### Running the Application
 ```bash
-# Open in browser (no build required)
-open index.html
-# Or serve locally
+# Using npm scripts (recommended)
+npm start                    # Start Python server on port 8000
+npm run serve               # Alternative command for same server
+
+# Or manually
+open index.html             # Direct browser opening
 python -m http.server 8000  # Then open http://localhost:8000
+```
+
+### Testing
+```bash
+# Run all tests with Playwright
+npm test                    # Headless test execution
+npm run test:headed        # Run tests with browser UI visible
+npm run test:ui            # Run tests with Playwright UI for debugging
 ```
 
 ### No Build Process
 This application runs directly in the browser without compilation, transpilation, or bundling.
+
+## Testing Infrastructure
+
+### Playwright Setup
+- **Configuration**: `playwright.config.ts` defines test settings
+- **Test Directory**: `/tests/` contains test specifications
+- **Auto Server**: Tests automatically start Python server on port 8000
+- **Multi-browser**: Tests run on Chrome, Firefox, and Safari
+- **Base URL**: `http://localhost:8000` for local testing
+
+### Running Tests
+- Tests are written in TypeScript using Playwright Test framework
+- HTML reporter generates detailed test results in `playwright-report/`
+- Trace collection on first retry for debugging failures
+- Parallel execution supported (disabled in CI for stability)
 
 ## Google Sheets Integration
 

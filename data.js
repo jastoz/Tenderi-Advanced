@@ -25,6 +25,23 @@ function updateArticleStats() {
         a.source && !a.source.toLowerCase().includes('lager') && 
         !a.source.toLowerCase().includes('urpd')).length;
     
+    // TAB COUNTS - Critical for drag & drop functionality
+    updateElementIfExists('resultsCount', (typeof results !== 'undefined') ? results.length : 0);
+    updateElementIfExists('resultsCountText', (typeof results !== 'undefined') ? results.length : 0);
+    
+    updateElementIfExists('troskovnikCount', (typeof troskovnik !== 'undefined') ? troskovnik.length : 0);
+    updateElementIfExists('troskovnikCountText', (typeof troskovnik !== 'undefined') ? troskovnik.length : 0);
+    
+    updateElementIfExists('tablicaRabataCount', (typeof tablicaRabata !== 'undefined') ? tablicaRabata.length : 0);
+    
+    // Prošlogodišnje cijene count
+    updateElementIfExists('proslogodisnjeCijeneCount', (typeof proslogodisnjeCijene !== 'undefined') ? proslogodisnjeCijene.length : 0);
+    
+    // Weight database counts
+    const weightDbSize = (typeof weightDatabase !== 'undefined') ? weightDatabase.size : 0;
+    updateElementIfExists('weightsCount', weightDbSize);
+    updateElementIfExists('weightsDbCount', weightDbSize);
+    
     // Enhanced: PDV statistics
     const pdv5Count = articles.filter(a => a.pdvStopa === 5).length;
     const pdv25Count = articles.filter(a => a.pdvStopa === 25).length;
@@ -34,6 +51,16 @@ function updateArticleStats() {
         // // console.log(`📊 PDV statistike: ${pdv5Count} x 5%, ${pdv25Count} x 25%, ukupno ${pdvTotalCount} s PDV`);
     } else {
         // // console.log('📊 Nema artikala za statistike');
+    }
+}
+
+/**
+ * Helper function to safely update DOM elements
+ */
+function updateElementIfExists(elementId, value) {
+    const element = document.getElementById(elementId);
+    if (element) {
+        element.textContent = value;
     }
 }
 

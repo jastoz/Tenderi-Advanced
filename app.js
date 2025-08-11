@@ -84,7 +84,7 @@ document.addEventListener('DOMContentLoaded', function() {
             '• Eliminiran "Preračun" tab - sve direktno!\n\n' +
             '📄 Upload-ajte Excel/CSV datoteke za početak rada\n' +
             '💾 Koristite "Save As" za spremanje vašeg rada\n\n' +
-            '⌨️ Kratice: Ctrl+S (brzo spremi), Ctrl+Shift+S (Save As), Ctrl+O (učitaj)'
+            '⌨️ Kratice: Ctrl+S (brzo spremi), Ctrl+Shift+S (odaberi lokaciju), Ctrl+O (učitaj)'
         );
     }
     
@@ -219,7 +219,7 @@ function initializeEnhancedEventListeners() {
         }
     });
     
-    // Enhanced beforeunload to suggest saving
+    // Enhanced beforeunload to ask user about saving
     window.addEventListener('beforeunload', function(event) {
         // Hide autocomplete
         if (typeof hideAutocomplete === 'function') {
@@ -233,7 +233,7 @@ function initializeEnhancedEventListeners() {
                                troskovnik.length > 0;
         
         if (hasEnhancedWork) {
-            const message = 'Imate nespremljan enhanced rad s cijenama. Želite li spremiti stanje prije zatvaranja?';
+            const message = 'Imate nespremljan rad. Želite li spremiti prije zatvaranja?';
             event.returnValue = message;
             return message;
         }
@@ -284,7 +284,7 @@ function showEnhancedKeyboardShortcutsHelp() {
         '• Ctrl+Shift+R - Vrati sve uklonjene autocomplete artikle\n\n' +
         '💾 SPREMANJE/UČITAVANJE:\n' +
         '• Ctrl+S - Brzo spremi stanje\n' +
-        '• Ctrl+Shift+S - Save As s timestampom\n' +
+        '• Ctrl+Shift+S - Odaberi lokaciju za spremanje\n' +
         '• Ctrl+O - Učitaj stanje iz datoteke\n\n' +
         '🆕 ENHANCED FUNKCIONALNOSTI:\n' +
         '• Ctrl+R - Refresh troškovnik colors\n' +
@@ -510,55 +510,92 @@ window.addEventListener('error', function(event) {
 
 /**
  * Enhanced unhandled promise rejections handler
+ * Only log critical errors, suppress common background operation failures
  */
 window.addEventListener('unhandledrejection', function(event) {
-    if (Logger && Logger.error) {
-        Logger.error('Neobrađena enhanced greška promise:', event.reason);
+    // Check if this is a network/fetch error that we can ignore
+    const isNetworkError = event.reason && (
+        event.reason.name === 'TypeError' ||
+        event.reason.message?.includes('fetch') ||
+        event.reason.message?.includes('Network') ||
+        event.reason.message?.includes('Failed to fetch') ||
+        event.reason.name === 'AbortError'
+    );
+    
+    // Only log non-network errors to avoid spam
+    if (!isNetworkError) {
+        if (Logger && Logger.error) {
+            Logger.error('Neobrađena enhanced greška promise:', event.reason);
+        } else {
+            console.error('❌ ERROR: Neobrađena enhanced greška promise:', event.reason);
+        }
+        
+        if (Logger && Logger.warn) {
+            Logger.warn('Enhanced promise rejection handled:', event.reason);
+        }
     } else {
-        console.error('❌ ERROR: Neobrađena enhanced greška promise:', event.reason);
+        // Silently handle network errors in debug mode only
+        if (Logger && typeof Logger.getConfig === 'function' && Logger.getConfig().developmentMode) {
+            Logger.debug('🌐 Network error silently handled:', event.reason.message);
+        }
     }
     
     event.preventDefault();
     
-    if (typeof hideAutocomplete === 'function') {
+    // Only hide autocomplete for critical errors, not network errors
+    if (!isNetworkError && typeof hideAutocomplete === 'function') {
         hideAutocomplete();
-    }
-    
-    // Enhanced error logging but don't spam user
-    if (Logger && Logger.warn) {
-        Logger.warn('Enhanced promise rejection handled:', event.reason);
     }
 });
 
 /**
- * Enhanced cleanup function for page unload
+ * Enhanced cleanup function for page unload - removed auto-save
+ * User will be prompted through beforeunload event above
  */
 window.addEventListener('beforeunload', function() {
     if (typeof hideAutocomplete === 'function') {
         hideAutocomplete();
     }
+    // Auto-save removed - user will be prompted to save manually
+});
+
+/**
+ * Shows a dialog asking user if they want to save before exiting
+ */
+function showExitSaveDialog() {
+    // Create confirmation dialog
+    const shouldSave = confirm(
+        'Imate nespremljan rad koji će biti izgubljen.\n\n' +
+        'Kliknite OK da odaberete lokaciju za spremanje,\n' +
+        'ili Cancel da zatvorite bez spremanja.'
+    );
     
-    // Enhanced: Try to auto-save if user has significant enhanced work
-    const stats = AppState.getEnhancedStats();
-    const hasSignificantEnhancedWork = stats.resultsWithPrices > 0 || 
-                                      stats.tablicaRabata > 0 ||
-                                      stats.articles > 10 || 
-                                      stats.troskovnik > 0;
-    
-    if (hasSignificantEnhancedWork && AppState.hasUnsavedChanges) {
-        // console.log('💾 Auto-saving enhanced work before page unload...');
-        if (typeof quickSaveState === 'function') {
-            try {
+    if (shouldSave) {
+        // User wants to save - show file dialog
+        if (typeof saveStateWithDialog === 'function') {
+            saveStateWithDialog().then((saved) => {
+                if (saved) {
+                    // Successfully saved, user can now exit
+                    showMessage('success', 'Rad je uspješno spremljen. Možete zatvoriti aplikaciju.');
+                }
+            }).catch((error) => {
+                console.error('Save dialog error:', error);
+                showMessage('error', 'Greška pri spremanju. Rad nije spremljen.');
+            });
+        } else {
+            // Fallback to quick save
+            if (typeof quickSaveState === 'function') {
                 quickSaveState();
-            } catch (error) {
-                console.warn('Enhanced auto-save failed:', error);
+                showMessage('success', 'Rad je spremljen u Downloads mapu. Možete zatvoriti aplikaciju.');
             }
         }
     }
-});
+    // If user clicked Cancel, they can exit without saving
+}
 
 // Export enhanced AppState for use in other modules
 window.AppState = AppState;
+window.showExitSaveDialog = showExitSaveDialog;
 
 // Enhanced development helpers (only in development)
 if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {

@@ -5,6 +5,7 @@
 
 // Global weight database
 let weightDatabase = new Map();
+let pdvDatabase = new Map(); // PDV database for O(1) access to VAT rates
 let weightTableData = [];
 let currentSortColumn = null;
 let currentSortDirection = 'asc';
@@ -81,6 +82,14 @@ function getArticleWeight(code, name, unit, source) {
 }
 
 /**
+ * Get PDV stopa (VAT rate) for article code - O(1) access
+ */
+function getPDVStopa(code) {
+    if (!code) return 0;
+    return pdvDatabase.has(code) ? pdvDatabase.get(code) : 0;
+}
+
+/**
  * GOOGLE SHEETS INTEGRATION - MAIN FUNCTIONS
  */
 
@@ -126,47 +135,64 @@ async function testGoogleSheetsConnection() {
  * Import weights from Google Sheets
  */
 async function importFromGoogleSheets() {
+    console.log('🔥🔥🔥 JEBENI DEBUG: importFromGoogleSheets POČINJE!');
+    
     try {
+        console.log('🔥 JEBENI DEBUG: Testiram Google Sheets vezu...');
         // First test the connection
         showMessage('info', '🔍 Testiram Google Sheets vezu...', 'weightsStatus');
         
         const connectionTest = await testGoogleSheetsConnection();
+        console.log('🔥 JEBENI DEBUG: Connection test result:', connectionTest);
+        
         if (!connectionTest.success) {
+            console.log('🔥 JEBENI DEBUG: Connection test FAILED!');
             throw new Error(`Connection test failed: ${connectionTest.error}`);
         }
         
+        console.log('🔥 JEBENI DEBUG: Dohvaćam artikle iz Google Sheets...');
         // Fetch articles data
         showMessage('info', '📊 Dohvaćam artikle iz Google Sheets...', 'weightsStatus');
         
+        console.log('🔥 JEBENI DEBUG: Pokrećem fetch...');
         const response = await fetch(`${WEIGHT_CONFIG.GOOGLE_SCRIPT_URL}?action=getArticles&sheet=${WEIGHT_CONFIG.SHEET_NAME}`, {
             method: 'GET',
             mode: 'cors'
         });
         
+        console.log('🔥 JEBENI DEBUG: Fetch završen, response:', response);
+        
         if (!response.ok) {
+            console.log('🔥 JEBENI DEBUG: Response NOT OK!');
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
+        console.log('🔥 JEBENI DEBUG: Parsing JSON...');
         const result = await response.json();
-        // // console.log('📊 Google Sheets response:', result);
+        console.log('🔥 JEBENI DEBUG: JSON parsed:', result);
         
         if (result.error) {
+            console.log('🔥 JEBENI DEBUG: Result has error!');
             throw new Error(`Google Sheets error: ${result.error}`);
         }
         
         if (!result.success || !Array.isArray(result.articles)) {
+            console.log('🔥 JEBENI DEBUG: Invalid response format!');
             throw new Error('Invalid response format from Google Sheets');
         }
         
+        console.log('🔥 JEBENI DEBUG: Processing data...');
         // Process the data
         processGoogleSheetsData(result.articles);
         
+        console.log('🔥 JEBENI DEBUG: importFromGoogleSheets ZAVRŠAVA USPJEŠNO!');
         return {
             success: true,
             count: result.articles.length
         };
         
     } catch (error) {
+        console.error('🔥 JEBENI DEBUG: Import ERROR:', error);
         console.error('❌ Google Sheets import error:', error);
         
         showMessage('error', 
@@ -192,15 +218,20 @@ async function importFromGoogleSheets() {
  * Process Google Sheets data
  */
 function processGoogleSheetsData(articles) {
-    // // console.log('🔄 Processing Google Sheets data:', articles.length, 'articles');
+    console.log('🔥🔥🔥 JEBENI DEBUG: processGoogleSheetsData POČINJE!');
+    console.log('🔥 Articles length:', articles.length);
+    console.log('🔥 First 3 articles:', articles.slice(0, 3));
     
     // Clear existing data
     weightDatabase.clear();
+    pdvDatabase.clear();
     weightTableData = [];
     
     let processedCount = 0;
     let skippedCount = 0;
     let pdvProcessedCount = 0;
+    
+    console.log('🔥 JEBENI DEBUG: Starting article processing loop...');
     
     articles.forEach((article, index) => {
         try {
@@ -239,6 +270,11 @@ function processGoogleSheetsData(articles) {
                     
                     // // console.log(`✅ ${sifra}: ${tezinaRaw}kg, TB: ${tarifniBroj}, PDV: ${pdvStopa}%`);
                 }
+            }
+            
+            // Store PDV data if šifra exists (independent of weight)
+            if (sifra && pdvStopa > 0) {
+                pdvDatabase.set(sifra, pdvStopa);
             }
             
             // Create table data with PDV
@@ -314,14 +350,17 @@ function processGoogleSheetsData(articles) {
             `✅ Važećih težina: ${processedCount}\n` +
             `🆕 PDV stavki: ${pdvProcessedCount}\n` +
             `❌ Preskočeno: ${skippedCount}\n` +
-            `🎯 U bazi: ${weightDatabase.size}\n\n` +
+            `🎯 U bazi težina: ${weightDatabase.size}\n` +
+            `💰 U PDV bazi: ${pdvDatabase.size}\n\n` +
             `🔄 Real-time sync omogućen!\n` +
-            `⚡ Težine automatski primijenjene na sve artikle!\n` +
+            `⚡ Težine i PDV stope automatski primijenjene!\n` +
             `🔄 Auto-refresh pokrenut (60s)\n` +
             `🟢 Zelene težine = iz Google Sheets baze`, 
             'weightsStatus'
         );
     }
+    
+    console.log('🔥🔥🔥 JEBENI DEBUG: processGoogleSheetsData ZAVRŠAVA USPJEŠNO!');
 }
 
 /**
@@ -484,6 +523,7 @@ function processWeightFile(file) {
             
             // Clear data
             weightDatabase.clear();
+            pdvDatabase.clear();
             weightTableData = [];
             
             let processedCount = 0;
@@ -541,6 +581,11 @@ function processWeightFile(file) {
                         
                         // // console.log(`✅ ${sifra}: ${tezinaStr} → ${tezinaKg}kg, TB: ${tarifniBroj}, PDV: ${pdvStopa}%`);
                     }
+                }
+                
+                // Store PDV data if šifra exists (independent of weight)
+                if (sifra && pdvStopa > 0) {
+                    pdvDatabase.set(sifra, pdvStopa);
                 }
                 
                 // Create table data with PDV
@@ -613,9 +658,10 @@ function processWeightFile(file) {
                 `✅ Važećih težina: ${processedCount}\n` +
                 `🆕 PDV stavki: ${pdvProcessedCount}\n` +
                 `❌ Preskočeno: ${skippedCount}\n` +
-                `🎯 U bazi: ${weightDatabase.size}\n\n` +
+                `🎯 U bazi težina: ${weightDatabase.size}\n` +
+                `💰 U PDV bazi: ${pdvDatabase.size}\n\n` +
                 `📋 Format: A=šifre, M=TB, V=težine\n` +
-                `⚡ Težine automatski primijenjene na sve artikle!\n` +
+                `⚡ Težine i PDV stope automatski primijenjene!\n` +
                 `🔄 Auto-refresh pokrenut (60s)\n` +
                 `🟢 Zelene težine = iz CSV baze`, 
                 'weightsStatus'
@@ -1325,6 +1371,7 @@ window.updateWeightsTableDisplay = updateWeightsTableDisplay;
 window.updateWeightValue = updateWeightValue;
 window.getArticleWeight = getArticleWeight;
 window.getArticleWeightAndPDV = getArticleWeightAndPDV;
+window.getPDVStopa = getPDVStopa;
 window.mapTarifniBrojToPDV = mapTarifniBrojToPDV;
 window.applyWeightsToArticles = applyWeightsToArticles;
 window.clearWeightDatabase = clearWeightDatabase;
@@ -1332,6 +1379,7 @@ window.getWeightDatabaseStats = getWeightDatabaseStats;
 window.exportWeightDatabase = exportWeightDatabase;
 window.sortWeightTable = sortWeightTable;
 window.weightDatabase = weightDatabase;
+window.pdvDatabase = pdvDatabase;
 window.weightTableData = weightTableData;
 
 // Search functions

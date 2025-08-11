@@ -499,6 +499,13 @@ function getProslogodisnjaCijena(sifra) {
     return item ? item.cijena : null;
 }
 
+// Get full last-year article record by sifra (helper for tooltips)
+function getProslogodisnjiArtikal(sifra) {
+    const item = proslogodisnjeCijene.find(i => i.sifra === sifra);
+    if (!item) return null;
+    return { sifra: item.sifra, naziv: item.naziv, jm: item.jm, cijena: item.cijena };
+}
+
 // Get all proslogodisnje cijene for autocomplete suggestions
 function getProslogodisnjeCijeneForAutocomplete() {
     return proslogodisnjeCijene.map(item => ({
@@ -546,5 +553,6 @@ window.handleExportProslogodisnje = handleExportProslogodisnje;
 window.handleClearProslogodisnje = handleClearProslogodisnje;
 window.getProslogodisnjaCijena = getProslogodisnjaCijena;
 window.getProslogodisnjeCijeneForAutocomplete = getProslogodisnjeCijeneForAutocomplete;
+window.getProslogodisnjiArtikal = getProslogodisnjiArtikal;
 
 // console.log('✅ Prošlogodišnje cijene module loaded successfully!');

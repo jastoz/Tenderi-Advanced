@@ -5,7 +5,7 @@
 
 // Konfiguracija logiranja
 const LOG_CONFIG = {
-    // ONEMOGUĆENO - aplikacija je prespora s logovima
+    // ONEMOGUĆENO - aplikacija je prespora s logovima (možete postaviti na true za debugging)
     DEVELOPMENT_MODE: false,
     
     // Log nivoi
@@ -202,7 +202,19 @@ if (typeof window !== 'undefined') {
 }
 
 console.log('✅ Enhanced Logger initialized');
-console.log('🔧 Use Logger.setDevelopmentMode(false) to disable logging');
+console.log('🔧 Use Logger.setDevelopmentMode(true) to enable debug logging');
 console.log('🎯 Current config:', Logger.getConfig());
 console.log('📋 Logger.LEVELS:', Logger.LEVELS);
 console.log('🌍 window.Logger:', typeof window.Logger);
+
+// Globalna funkcija za lako omogućavanje debug moda
+window.enableDebugMode = function() {
+    Logger.setDevelopmentMode(true);
+    console.log('🐛 DEBUG MODE ENABLED - All debug logs will now be shown');
+    console.log('🔧 Use Logger.setDevelopmentMode(false) or window.disableDebugMode() to disable');
+};
+
+window.disableDebugMode = function() {
+    Logger.setDevelopmentMode(false);
+    console.log('🔇 DEBUG MODE DISABLED - Debug logs hidden for better performance');
+};

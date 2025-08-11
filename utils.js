@@ -4,6 +4,36 @@
  */
 
 /**
+ * Creates Excel formula cell for XLSX export
+ * @param {string} formula - Excel formula (without =)
+ * @param {number} value - Fallback numeric value
+ * @param {object} style - Optional cell styling
+ * @returns {object} XLSX cell object with formula
+ */
+function createExcelFormulaCell(formula, value = 0, style = {}) {
+    return {
+        t: 'n',
+        f: formula,
+        v: value,
+        s: style
+    };
+}
+
+/**
+ * Creates Excel cell with numeric value only
+ * @param {number} value - Numeric value
+ * @param {object} style - Optional cell styling
+ * @returns {object} XLSX cell object
+ */
+function createExcelNumericCell(value, style = {}) {
+    return {
+        t: 'n',
+        v: value,
+        s: style
+    };
+}
+
+/**
  * Standardizes text for search comparison
  * @param {string} text - Text to standardize
  * @returns {string} Standardized text
@@ -410,6 +440,24 @@ function downloadBlob(blob, filename) {
 }
 
 /**
+ * Extracts article code present inside brackets anywhere in the name.
+ * Supports (), [] and {}. Returns the last bracketed token if multiple exist.
+ * @param {string} articleName - Full article name
+ * @returns {string} Extracted code or empty string
+ */
+function extractCodeFromBrackets(articleName) {
+    if (!articleName) return '';
+    const text = String(articleName);
+    const pattern = /[\(\[\{]([A-Za-z0-9]+)[\)\]\}]/g;
+    let match;
+    let lastToken = '';
+    while ((match = pattern.exec(text)) !== null) {
+        lastToken = match[1];
+    }
+    return lastToken;
+}
+
+/**
  * Creates and downloads a CSV file
  * @param {Array} headers - CSV headers
  * @param {Array} data - CSV data rows
@@ -507,6 +555,7 @@ window.exportToCSV = exportToCSV;
 window.refreshTroskovnikColors = refreshTroskovnikColors;
 window.debounce = debounce;
 window.throttle = throttle;
+window.extractCodeFromBrackets = extractCodeFromBrackets;
 
 Logger.info('Enhanced utils module loaded with weight database integration');
 Logger.debug('Priority 0: Weight Database (za naše artikle)');

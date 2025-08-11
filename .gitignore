@@ -48,3 +48,19 @@ backups/
 
 # OS generated files
 Icon?
+
+# Test files and reports
+playwright-report/
+test-results/
+*.test.html
+*test*.html
+*test*.js
+*diagnostic*.js
+*fix_analysis*.js
+test-complete-data.json
+
+# Manual test instructions (temporary files)
+MANUAL_TEST_INSTRUCTIONS*.md
+
+# Package lock files
+package-lock.json

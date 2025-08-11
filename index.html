@@ -189,6 +189,69 @@
             background: #10b981;
         }
         
+        /* Enhanced Historical Results Styling */
+        .historical-price-input {
+            border: 2px solid #64748b !important;
+            background: #f8fafc !important;
+            color: #64748b !important;
+        }
+        
+        .historical-weight-input {
+            border: 2px solid #dc2626 !important;
+            background: #fef2f2 !important;
+            color: #dc2626 !important;
+        }
+        
+        /* Red warning for missing weights */
+        .missing-weight-warning {
+            border: 2px solid #dc2626 !important;
+            background: #fef2f2 !important;
+            color: #dc2626 !important;
+            animation: pulse-red 2s infinite;
+        }
+        
+        @keyframes pulse-red {
+            0%, 100% { 
+                box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7); 
+            }
+            50% { 
+                box-shadow: 0 0 0 5px rgba(220, 38, 38, 0); 
+            }
+        }
+        
+        /* Button styling enhancements */
+        .choice-button-first {
+            background: #059669 !important;
+            transition: all 0.2s ease;
+        }
+        
+        .choice-button-first:hover {
+            background: #047857 !important;
+            transform: translateY(-1px);
+        }
+        
+        .choice-button-second {
+            background: #d1fae5 !important;
+            color: #059669 !important;
+            border: 1px solid #059669 !important;
+            transition: all 0.2s ease;
+        }
+        
+        .choice-button-second:hover {
+            background: #a7f3d0 !important;
+            transform: translateY(-1px);
+        }
+        
+        .historical-button {
+            background: #64748b !important;
+            transition: all 0.2s ease;
+        }
+        
+        .historical-button:hover {
+            background: #475569 !important;
+            transform: translateY(-1px);
+        }
+        
         /* Google Sheets Status Styles */
         .status-active {
             color: #059669;
@@ -466,6 +529,7 @@
         
         .btn-quick-save { background: #10b981; }
         .btn-save-as { background: #7c3aed; }
+        .btn-save-minimal { background: #059669; border: 2px solid #047857; }
         .btn-load-state { background: #0891b2; }
         
         /* Enhanced Weight Generation Button */
@@ -529,10 +593,13 @@
         <button class="btn-state btn-quick-save" onclick="handleQuickSave()" title="Brzo spremi trenutno stanje">
             💾 Quick Save
         </button>
-        <button class="btn-state btn-save-as" onclick="handleSaveAs()" title="Spremi stanje aplikacije s timestampom">
-            📁 Save As
+        <button class="btn-state btn-save-as" onclick="handleSaveAs()" title="Spremi puno stanje aplikacije s timestampom">
+            📁 Save As (Full)
         </button>
-        <button class="btn-state btn-load-state" onclick="document.getElementById('stateFileInput').click()" title="Učitaj spremljeno stanje">
+        <button class="btn-state btn-save-minimal" onclick="handleSaveMinimal()" title="Spremi sve potrebne podatke za offline rad - bez artikala!">
+            🎯 Save Complete Data
+        </button>
+        <button class="btn-state btn-load-state" onclick="console.log('🔍 Load button clicked'); const input = document.getElementById('stateFileInput'); console.log('📁 Input element:', input); if(input) { console.log('✅ Calling input.click()'); input.click(); } else { console.log('❌ stateFileInput element not found!'); }" title="Učitaj spremljeno stanje">
             📂 Load
         </button>
     </div>
@@ -949,9 +1016,10 @@
                                     <th style="width: 100px;">Podgrupa (E)</th>
                                     <th style="width: 250px;">Naziv artikla (F)</th>
                                     <th style="width: 80px;">J.M. (H)</th>
+                                    <th style="width: 80px;">Tarifni broj (M)</th>
+                                    <th style="width: 80px;">Stopa PDV</th>
                                     <th style="width: 150px;">Dobavljač (S)</th>
                                     <th style="width: 100px;">Težina (V)</th>
-                                    <th style="width: 100px;">Status korištenja</th>
                                     <th style="width: 200px;">Povezani artikli</th>
                                 </tr>
                             </thead>
@@ -989,12 +1057,26 @@
     <script src="weight-manager.js"></script>
     <script src="enhanced-search.js"></script>
     <script src="enhanced-results.js"></script>
+    <script src="enhanced-functions.js"></script>
     <script src="troskovnik.js"></script>
     <script src="tablicarabata.js"></script>
     <script src="proslogodisnje-cijene.js"></script>
     <script src="ui.js"></script>
     <script src="state-manager.js"></script>
     <script src="app.js"></script>
+
+    <script>
+        // Debug: Provjeri je li enhanced-functions.js učitan
+        console.log('🔥🔥🔥 INDEX.HTML DEBUG: Provjera loaded funkcija...');
+        console.log('🔥🔥🔥 typeof window.generateFromResults:', typeof window.generateFromResults);
+        console.log('🔥🔥🔥 typeof window.testEnhancedFunctionsLoaded:', typeof window.testEnhancedFunctionsLoaded);
+        
+        if (typeof window.testEnhancedFunctionsLoaded === 'function') {
+            console.log('🔥🔥🔥 ENHANCED-FUNCTIONS.JS JE USPJEŠNO UČITAN!');
+        } else {
+            console.log('🚨🚨🚨 ENHANCED-FUNCTIONS.JS SE NIJE UČITAO!');
+        }
+    </script>
 
     <script>
         // WRAPPER FUNCTIONS - Direct calls to external modules without recursion
@@ -1317,6 +1399,14 @@
             }
         }
         
+        function handleSaveMinimal() {
+            if (window.saveMinimalAppState) {
+                window.saveMinimalAppState();
+            } else {
+                showMessage('error', '❌ KRITIČNA GREŠKA: Save Final Results ne radi! State management nije učitan.');
+            }
+        }
+        
         function handleStateFileLoad(event) {
             console.log('🔍 Loading state file...');
             const file = event.target.files[0];
@@ -1334,28 +1424,77 @@
                 return;
             }
             
-            // Priority 1: Use loadAppState if available (which it should be)
-            if (window.loadAppState && typeof window.loadAppState === 'function') {
-                console.log('✅ Using loadAppState function');
-                window.loadAppState(file);
-            } 
-            // Priority 2: Fallback to handleStateFileSelect
-            else if (window.handleStateFileSelect && typeof window.handleStateFileSelect === 'function') {
-                console.log('✅ Using handleStateFileSelect function');
-                window.handleStateFileSelect(event);
-            } 
-            // Priority 3: Last resort - try processUploadedFile
-            else {
-                console.log('⚠️ Using processUploadedFile as fallback');
-                if (window.processFile && typeof window.processFile === 'function') {
-                    window.processFile(file);
+            // Enhanced debugging - check what functions are available
+            console.log('🔍 Checking available functions:');
+            console.log('  - window.loadAppState:', typeof window.loadAppState);
+            console.log('  - window.handleStateFileSelect:', typeof window.handleStateFileSelect);
+            console.log('  - window.processFile:', typeof window.processFile);
+            console.log('  - showMessage:', typeof showMessage);
+            
+            // Improved loading function with timeout safety
+            function attemptLoad() {
+                // Priority 1: Use loadAppState if available (which it should be)
+                if (window.loadAppState && typeof window.loadAppState === 'function') {
+                    console.log('✅ Using loadAppState function');
+                    try {
+                        window.loadAppState(file);
+                        return true;
+                    } catch (error) {
+                        console.error('❌ Error in loadAppState:', error);
+                        showMessage('error', `❌ Greška pri učitavanju: ${error.message}`);
+                        return false;
+                    }
+                } 
+                // Priority 2: Fallback to handleStateFileSelect
+                else if (window.handleStateFileSelect && typeof window.handleStateFileSelect === 'function') {
+                    console.log('✅ Using handleStateFileSelect function');
+                    try {
+                        window.handleStateFileSelect(event);
+                        return true;
+                    } catch (error) {
+                        console.error('❌ Error in handleStateFileSelect:', error);
+                        showMessage('error', `❌ Greška pri učitavanju: ${error.message}`);
+                        return false;
+                    }
+                } 
+                // Priority 3: Last resort - try processFile
+                else if (window.processFile && typeof window.processFile === 'function') {
+                    console.log('⚠️ Using processFile as fallback');
+                    try {
+                        window.processFile(file);
+                        return true;
+                    } catch (error) {
+                        console.error('❌ Error in processFile:', error);
+                        showMessage('error', `❌ Greška pri učitavanju: ${error.message}`);
+                        return false;
+                    }
                 } else {
-                    showMessage('error', '❌ KRITIČNA GREŠKA: Nijedna funkcija za učitavanje nije dostupna!\n\nMolimo osvježite stranicu i pokušajte ponovo.');
+                    console.log('❌ No loading functions available');
+                    return false;
                 }
             }
             
-            // Clear the input so the same file can be selected again
-            event.target.value = '';
+            // Try to load immediately
+            if (attemptLoad()) {
+                // Success - clear the input so the same file can be selected again
+                event.target.value = '';
+                return;
+            }
+            
+            // If immediate attempt failed, try again after a short delay
+            console.log('⏱️ Immediate load failed, trying again after 100ms...');
+            setTimeout(() => {
+                if (attemptLoad()) {
+                    console.log('✅ Delayed load successful');
+                    // Clear the input so the same file can be selected again
+                    event.target.value = '';
+                } else {
+                    console.error('❌ All load attempts failed');
+                    showMessage('error', '❌ KRITIČNA GREŠKA: Nijedna funkcija za učitavanje nije dostupna!\n\nMolimo osvježite stranicu i pokušajte ponovo.');
+                    // Still clear the input
+                    event.target.value = '';
+                }
+            }, 100);
         }
         
         // === TROŠKOVNIK FUNCTIONS ===

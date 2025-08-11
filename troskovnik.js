@@ -405,6 +405,7 @@ class TroskovnikUI {
     static renderRow(item, grandTotal) {
         const style = this.getRowStyle(item.found_results);
         const comment = this.getCommentDisplay(item);
+        const hover = this.getLastYearHover(item);
         const margin = this.getMarginDisplay(item.marza);
         const results = this.getResultsBadge(item.found_results);
         const total = this.getTotalDisplay(item);
@@ -413,7 +414,7 @@ class TroskovnikUI {
         
         return '<tr style="' + style + '">' +
             '<td style="text-align: center; font-size: 14px;"><strong>' + item.redni_broj + '</strong></td>' +
-            '<td ' + comment.attributes + ' style="font-size: 14px; word-wrap: break-word; overflow-wrap: break-word; max-width: 350px; min-width: 250px; padding: 8px; position: relative; white-space: normal; overflow: visible; text-overflow: unset;">' + item.naziv_artikla + comment.icon + linkIcon + '</td>' +
+            '<td ' + comment.attributes + ' ' + hover.attributes + ' style="font-size: 14px; word-wrap: break-word; overflow-wrap: break-word; max-width: 350px; min-width: 250px; padding: 8px; position: relative; white-space: normal; overflow: visible; text-overflow: unset;">' + item.naziv_artikla + comment.icon + linkIcon + '</td>' +
             '<td style="text-align: center; font-size: 14px;">' + item.mjerna_jedinica + '</td>' +
             '<td style="text-align: center;">' + this.renderWeightInput(item) + '</td>' +
             '<td style="text-align: center;">' + this.renderQuantityInput(item) + '</td>' +
@@ -470,6 +471,19 @@ class TroskovnikUI {
             attributes: 'title="' + titleText + '" style="' + styleText + '" onclick="event.stopPropagation(); TroskovnikComments.show(' + item.id + ')"',
             icon: hasComment ? ' <span style="margin-left: 5px; padding: 2px 4px; background: #f3e8ff; border-radius: 3px;">💬</span>' : ''
         };
+    }
+
+    static getLastYearHover(item) {
+        try {
+            const code = typeof window.extractCodeFromBrackets === 'function' ? window.extractCodeFromBrackets(item.naziv_artikla) : '';
+            if (!code) return { attributes: '' };
+            const last = typeof window.getProslogodisnjiArtikal === 'function' ? window.getProslogodisnjiArtikal(code) : null;
+            if (!last || !last.cijena) return { attributes: '' };
+            const titleText = `Prošlogodišnji artikal: ${last.naziv}\nŠifra: ${last.sifra}\nJ.M.: ${last.jm || ''}\nCijena: €${Number(last.cijena).toFixed(2)}`;
+            return { attributes: 'title="' + titleText.replace(/"/g, '\\"') + '"' };
+        } catch (e) {
+            return { attributes: '' };
+        }
     }
     
     static getMarginDisplay(marza) {
@@ -543,7 +557,7 @@ class TroskovnikUI {
         return '<div style="display: flex; align-items: center; gap: 3px;">' +
                '<span style="font-size: 14px; font-weight: bold; color: #374151;">€</span>' +
                '<input type="number" step="0.01" value="' + item[field].toFixed(2) + '"' +
-               ' onchange="TroskovnikData.update(' + item.id + ', \'' + field + '\', this.value); TroskovnikUI.render()"' +
+               ' onchange="TroskovnikData.update(' + item.id + ', \'' + field + '\', this.value); TroskovnikUI.render(); TroskovnikUI.handlePriceChange(' + item.id + ', \'' + field + '\', this.value)"' +
                ' onfocus="this.select()"' +
                ' style="width: 80px; padding: 6px; border: 1px solid ' + borderColor + ';' +
                ' border-radius: 4px; font-size: 14px; font-weight: bold; background: ' + bgColor + ';"' +
@@ -587,6 +601,99 @@ class TroskovnikUI {
                 }
             }
         }
+    }
+    
+    /**
+     * NOVA FUNKCIJA: Handles price changes and automatically creates result item
+     */
+    static handlePriceChange(itemId, field, newPrice) {
+        // Only handle izlazna_cijena changes for manual result creation
+        if (field !== 'izlazna_cijena') return;
+        
+        const numericId = parseInt(itemId);
+        const item = troskovnik.find(t => parseInt(t.id) === numericId);
+        if (!item) return;
+        
+        const price = parseFloat(newPrice) || 0;
+        
+        // Only create result if price is greater than 0
+        if (price > 0) {
+            // Check if ANY result already exists for this RB (not just manual)
+            const existingResult = results && results.find(r => 
+                r.rb == item.redni_broj
+            );
+            
+            if (!existingResult) {
+                // Create new manual result item only if no result exists
+                TroskovnikUI.createManualResultItem(item, price);
+            } else {
+                // Update existing result (whether it's manual or from search)
+                existingResult.pricePerPiece = price;
+                existingResult.pricePerKg = item.tezina > 0 ? price / item.tezina : price;
+                
+                // Update results display
+                if (typeof updateResultsDisplay === 'function') {
+                    updateResultsDisplay();
+                }
+            }
+        }
+    }
+    
+    /**
+     * NOVA FUNKCIJA: Creates a manual result item when user enters price
+     */
+    static createManualResultItem(troskovnikItem, izlaznaPrice) {
+        if (typeof results === 'undefined' || !Array.isArray(results)) {
+            window.results = [];
+        }
+        
+        // Generate unique ID for result
+        const resultId = 'manual-' + troskovnikItem.redni_broj + '-' + Date.now();
+        
+        // Calculate weight-based prices
+        const weight = troskovnikItem.tezina || 1;
+        const pricePerKg = weight > 0 ? izlaznaPrice / weight : izlaznaPrice;
+        
+        // Create manual result item
+        const manualResult = {
+            id: resultId,
+            rb: troskovnikItem.redni_broj,
+            code: 'MANUAL-' + troskovnikItem.redni_broj,
+            name: troskovnikItem.naziv_artikla + ' (Ručno uneseno)',
+            unit: troskovnikItem.mjerna_jedinica,
+            price: izlaznaPrice, // Original price = izlazna cijena
+            pricePerPiece: izlaznaPrice,
+            pricePerKg: pricePerKg,
+            weight: weight,
+            calculatedWeight: weight,
+            supplier: 'Ručni unos',
+            date: new Date().toISOString().split('T')[0],
+            source: 'MANUAL',
+            hasUserPrice: true,
+            userPriceType: 'pricePerPiece',
+            isManualEntry: true,
+            customPdvStopa: 25 // Default PDV 25%
+        };
+        
+        // Add to results
+        results.push(manualResult);
+        
+        // Update displays
+        if (typeof updateResultsDisplay === 'function') {
+            updateResultsDisplay();
+        }
+        
+        if (typeof refreshTroskovnikColors === 'function') {
+            refreshTroskovnikColors();
+        }
+        
+        // Show success message
+        showTroskovnikMessage('success', 
+            `✅ Kreirana ručna stavka u rezultatima za RB ${troskovnikItem.redni_broj}\n` +
+            `💰 Izlazna cijena: €${izlaznaPrice.toFixed(2)}\n` +
+            `📋 PDV: 25% (može se promijeniti u rezultatima)\n` +
+            `🔄 Prebacite se na "Rezultati" tab za upravljanje PDV-om`
+        );
     }
 }
 
@@ -1082,6 +1189,14 @@ function exportTroskovnikCSV() {
         if (correspondingResults.length > 0) {
             // Try each result until we find one with PDV data
             for (const result of correspondingResults) {
+                // PRIORITY: Check for manual entries with custom PDV stopa
+                if (result.isManualEntry && result.customPdvStopa) {
+                    pdvStopa = result.customPdvStopa + '%';
+                    iznosPdv = (itemTotal * result.customPdvStopa / 100).toFixed(2);
+                    // console.log(`📋 Manual PDV found: RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
+                    break;
+                }
+                
                 // Check if this is an external article (not ours) with custom PDV stopa
                 if (!isTrulyOurArticle(result.source, result.code) && 
                     result.customPdvStopa) {
@@ -1148,12 +1263,17 @@ function exportTroskovnikCSV() {
     const filename = 'troskovnik_s_PDV_' + troskovnik.length + '_stavki.csv';
     exportToCSV(csvHeaders, csvData, filename);
     
-    // ENHANCED: Show success message with PDV info
+    // ENHANCED: Show success message with PDV info including manual entries
     const itemsWithPdv = troskovnik.filter(item => {
         const correspondingResults = results.filter(result => result.rb === item.redni_broj);
         
         if (correspondingResults.length > 0) {
             for (const result of correspondingResults) {
+                // Check for manual entries with PDV
+                if (result.isManualEntry && result.customPdvStopa) {
+                    return true;
+                }
+                
                 // Check if this is an external article (not ours) with custom PDV stopa
                 if (!isTrulyOurArticle(result.source, result.code) && 
                     result.customPdvStopa) {
@@ -1178,15 +1298,23 @@ function exportTroskovnikCSV() {
         return false;
     }).length;
     
+    // Count manual entries
+    const manualEntries = troskovnik.filter(item => {
+        const correspondingResults = results.filter(result => result.rb === item.redni_broj);
+        return correspondingResults.some(result => result.isManualEntry);
+    }).length;
+    
     showTroskovnikMessage('success', 
         `✅ Exportan enhanced CSV s RUC i PDV podacima!\n\n` +
         `📁 ${filename}\n` +
         `📊 Ukupno stavki: ${troskovnik.length}\n` +
-        `🏠 Naših stavki s PDV: ${itemsWithPdv}\n\n` +
+        `🏠 Naših stavki s PDV: ${itemsWithPdv}\n` +
+        `🟡 Ručno unesenih: ${manualEntries}\n\n` +
         `🆕 NOVI STUPCI:\n` +
         `• RUC (€) - razlika izlazna - nabavna 1\n` +
         `• Stopa PDV (5%, 13%, 25%)\n` +
-        `• Iznos PDV (€)`
+        `• Iznos PDV (€)\n\n` +
+        `🎯 Ručno unesene stavke uključuju PDV!`
     );
 }
 
@@ -1224,6 +1352,32 @@ function exportTroskovnikExcel() {
         if (correspondingResults.length > 0) {
             // Try each result until we find one with PDV data
             for (const result of correspondingResults) {
+                console.log(`🔍 Excel checking result: ${result.name} (source: ${result.source}, code: ${result.code}, pdvStopa: ${result.pdvStopa}, customPdvStopa: ${result.customPdvStopa}, isManualEntry: ${result.isManualEntry})`);
+                
+                // PRIORITY: Check for manual entries with custom PDV stopa
+                if (result.isManualEntry && result.customPdvStopa) {
+                    pdvStopa = result.customPdvStopa + '%';
+                    iznosPdv = parseFloat((itemTotal * result.customPdvStopa / 100).toFixed(2));
+                    console.log(`✅ Excel MANUAL PDV found: RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
+                    break;
+                }
+                
+                // PRIORITY: Check for any custom PDV stopa (covers "PO CJENIKU" articles from Autocomplete)
+                if (result.customPdvStopa && result.customPdvStopa > 0) {
+                    pdvStopa = result.customPdvStopa + '%';
+                    iznosPdv = parseFloat((itemTotal * result.customPdvStopa / 100).toFixed(2));
+                    console.log(`✅ Excel CUSTOM PDV found: RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
+                    break;
+                }
+                
+                // PRIORITY: Check for direct PDV stopa in result object (from WEIGHT_DATABASE)
+                if (result.pdvStopa && result.pdvStopa > 0) {
+                    pdvStopa = result.pdvStopa + '%';
+                    iznosPdv = parseFloat((itemTotal * result.pdvStopa / 100).toFixed(2));
+                    console.log(`✅ Excel DIRECT PDV found in result object: RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
+                    break;
+                }
+                
                 // Check if this result is from "our" source (LAGER/URPD) - ENHANCED LOGIC
                 const isOurSource = isTrulyOurArticle(result.source, result.code);
                 
@@ -1376,12 +1530,17 @@ function exportTroskovnikExcel() {
     
     XLSX.writeFile(wb, filename);
     
-    // ENHANCED: Show success message with PDV info
+    // ENHANCED: Show success message with PDV info including manual entries
     const itemsWithPdv = troskovnik.filter(item => {
         const correspondingResults = results.filter(result => result.rb === item.redni_broj);
         
         if (correspondingResults.length > 0) {
             for (const result of correspondingResults) {
+                // Check for manual entries with PDV
+                if (result.isManualEntry && result.customPdvStopa) {
+                    return true;
+                }
+                
                 // Check if this is an external article (not ours) with custom PDV stopa
                 if (!isTrulyOurArticle(result.source, result.code) && 
                     result.customPdvStopa) {
@@ -1407,11 +1566,18 @@ function exportTroskovnikExcel() {
         return false;
     }).length;
     
+    // Count manual entries for Excel report
+    const manualEntries = troskovnik.filter(item => {
+        const correspondingResults = results.filter(result => result.rb === item.redni_broj);
+        return correspondingResults.some(result => result.isManualEntry);
+    }).length;
+    
     showTroskovnikMessage('success', 
         `✅ Exportan enhanced troškovnik s RUC i PDV podacima!\n\n` +
         `📁 Datoteka: ${filename}\n` +
         `📊 Ukupno stavki: ${troskovnik.length}\n` +
         `🏠 Naših stavki s PDV: ${itemsWithPdv}\n` +
+        `🟡 Ručno unesenih: ${manualEntries}\n` +
         `💰 Ukupna vrijednost: €${grandTotal.toFixed(2)}\n` +
         `📋 Ukupan PDV: €${totalPdvAmount.toFixed(2)}\n` +
         `💵 Ukupno sa PDV: €${totalUkupnoSaPdv.toFixed(2)}\n\n` +
@@ -1420,6 +1586,7 @@ function exportTroskovnikExcel() {
         `• P: Stopa PDV (5%, 13%, 25%)\n` +
         `• Q: Iznos PDV (€)\n` +
         `• R: Ukupno sa PDV (€)\n\n` +
+        `🎯 Ručno unesene stavke uključuju PDV!\n` +
         `💡 Uključuje kalkulabilne ukupne sume, RUC i PDV!`
     );
 }
@@ -1499,6 +1666,10 @@ window.TroskovnikUI = TroskovnikUI;
 window.TroskovnikActions = TroskovnikActions;
 window.TroskovnikComments = TroskovnikComments;
 window.generateUniqueId = generateUniqueId;
+
+// Export new functions for manual entry
+window.createManualResultItem = TroskovnikUI.createManualResultItem;
+window.handlePriceChange = TroskovnikUI.handlePriceChange;
 
 // Function to scroll to results for specific RB
 function scrollToResultsForRB(rb) {

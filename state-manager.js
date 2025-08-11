@@ -87,6 +87,76 @@ function serializeAppState() {
 }
 
 /**
+ * Serializes MINIMAL application state (only final results) to JSON
+ * @returns {Object} Minimal state object with only troskovnik and tablica rabata
+ */
+function serializeMinimalState() {
+    // Calculate total values for summary
+    function calculateTotalValue() {
+        let total = 0;
+        try {
+            if (typeof troskovnik !== 'undefined') {
+                total = troskovnik.reduce((sum, item) => {
+                    return sum + (parseFloat(item.izlazna_cijena) || 0);
+                }, 0);
+            }
+        } catch (error) {
+            console.warn('Error calculating total:', error);
+        }
+        return Math.round(total * 100) / 100;
+    }
+
+    const state = {
+        // Metadata
+        timestamp: new Date().toISOString(),
+        version: 'minimal-1.0',
+        appName: 'Tražilica Proizvoda & Troškovnik - Complete Data',
+        
+        // ENHANCED: Include results + supporting data for complete workflow
+        finalResults: (typeof results !== 'undefined') ? results : [],
+        
+        finalTroskovnik: (typeof troskovnik !== 'undefined') ? 
+            troskovnik.filter(item => item && (parseFloat(item.izlazna_cijena) || 0) > 0) : [],
+        
+        finalTablicaRabata: (typeof tablicaRabata !== 'undefined') ? 
+            tablicaRabata.filter(item => item && (parseFloat(item.cijena_bez_pdv) || 0) > 0) : [],
+        
+        // CRITICAL: Include supporting databases for offline functionality
+        finalProslogodisnjeCijene: (typeof proslogodisnjeCijene !== 'undefined') ? proslogodisnjeCijene : [],
+        
+        finalWeightDatabase: (typeof weightDatabase !== 'undefined') ? 
+            Array.from(weightDatabase.entries()).map(([key, value]) => ({sifra: key, tezina: value})) : [],
+        
+        finalPdvDatabase: (typeof pdvDatabase !== 'undefined') ? 
+            Array.from(pdvDatabase.entries()).map(([key, value]) => ({sifra: key, pdv: value})) : [],
+        
+        // Compact summary only
+        summary: {
+            totalResultsItems: (typeof results !== 'undefined') ? results.length : 0,
+            totalTroskovnikItems: (typeof troskovnik !== 'undefined') ? troskovnik.length : 0,
+            totalTablicaRabataItems: (typeof tablicaRabata !== 'undefined') ? tablicaRabata.length : 0,
+            totalProslogodisnjeCijeneItems: (typeof proslogodisnjeCijene !== 'undefined') ? proslogodisnjeCijene.length : 0,
+            totalWeightItems: (typeof weightDatabase !== 'undefined') ? weightDatabase.size : 0,
+            totalPdvItems: (typeof pdvDatabase !== 'undefined') ? pdvDatabase.size : 0,
+            totalValueEUR: calculateTotalValue(),
+            generatedAt: new Date().toLocaleString('hr-HR')
+        }
+    };
+    
+    console.log('📦 Serialized MINIMAL state:', {
+        finalResults: state.finalResults.length,
+        finalTroskovnik: state.finalTroskovnik.length,
+        finalTablicaRabata: state.finalTablicaRabata.length,
+        finalProslogodisnjeCijene: state.finalProslogodisnjeCijene.length,
+        finalWeightDatabase: state.finalWeightDatabase.length,
+        finalPdvDatabase: state.finalPdvDatabase.length,
+        totalValue: state.summary.totalValueEUR
+    });
+    
+    return state;
+}
+
+/**
  * Deserializes and restores application state from JSON
  * @param {Object} state - State object to restore
  * @returns {boolean} Success status
@@ -104,6 +174,21 @@ function deserializeAppState(state) {
             throw new Error('Invalid state format - missing version or app name');
         }
         
+        // Detect minimal vs full state format
+        const isMinimalFormat = state.version === 'minimal-1.0';
+        console.log(`📋 State format detected: ${isMinimalFormat ? 'MINIMAL' : 'FULL'} (version: ${state.version})`);
+        
+        if (isMinimalFormat) {
+            console.log('📦 Loading minimal state:', {
+                finalResults: state.finalResults?.length || 0,
+                finalTroskovnik: state.finalTroskovnik?.length || 0,
+                finalTablicaRabata: state.finalTablicaRabata?.length || 0,
+                finalProslogodisnjeCijene: state.finalProslogodisnjeCijene?.length || 0,
+                finalWeightDatabase: state.finalWeightDatabase?.length || 0,
+                finalPdvDatabase: state.finalPdvDatabase?.length || 0
+            });
+        }
+        
         // console.log('✅ State validation passed:', {
         //     version: state.version,
         //     timestamp: state.timestamp,
@@ -117,39 +202,147 @@ function deserializeAppState(state) {
         // Clear existing data
         clearAllData();
         
-        // Restore core data arrays safely
-        if (state.articles && Array.isArray(state.articles)) {
-            if (typeof articles !== 'undefined') {
-                articles.push(...state.articles);
-                // console.log('📊 Restored articles:', articles.length);
+        if (isMinimalFormat) {
+            // MINIMAL FORMAT: Load only final results
+            console.log('🔄 Processing minimal format JSON...');
+            
+            // Load finalResults → results
+            if (state.finalResults && Array.isArray(state.finalResults)) {
+                if (typeof results !== 'undefined') {
+                    results.push(...state.finalResults);
+                    console.log('🎯 Restored results from minimal format:', results.length);
+                }
             }
-        }
-        
-        if (state.results && Array.isArray(state.results)) {
-            if (typeof results !== 'undefined') {
-                results.push(...state.results);
-                // console.log('🎯 Restored results:', results.length);
+            
+            // Load finalTroskovnik → troskovnik
+            if (state.finalTroskovnik && Array.isArray(state.finalTroskovnik)) {
+                if (typeof troskovnik !== 'undefined') {
+                    troskovnik.push(...state.finalTroskovnik);
+                    console.log('📋 Restored troškovnik from minimal format:', troskovnik.length);
+                }
             }
-        }
-        
-        if (state.troskovnik && Array.isArray(state.troskovnik)) {
-            if (typeof troskovnik !== 'undefined') {
-                troskovnik.push(...state.troskovnik);
-                // console.log('📋 Restored troškovnik:', troskovnik.length);
+            
+            // Load finalTablicaRabata → tablicaRabata
+            if (state.finalTablicaRabata && Array.isArray(state.finalTablicaRabata)) {
+                if (typeof tablicaRabata !== 'undefined') {
+                    tablicaRabata.push(...state.finalTablicaRabata);
+                    console.log('📊 Restored tablica rabata from minimal format:', tablicaRabata.length);
+                }
             }
-        }
-        
-        if (state.preracunResults && Array.isArray(state.preracunResults)) {
-            if (typeof preracunResults !== 'undefined') {
-                preracunResults.push(...state.preracunResults);
-                // console.log('💰 Restored preračun:', preracunResults.length);
+            
+            // Load finalProslogodisnjeCijene → proslogodisnjeCijene
+            if (state.finalProslogodisnjeCijene && Array.isArray(state.finalProslogodisnjeCijene)) {
+                if (typeof proslogodisnjeCijene !== 'undefined') {
+                    proslogodisnjeCijene.length = 0; // Clear existing
+                    proslogodisnjeCijene.push(...state.finalProslogodisnjeCijene);
+                    console.log('📅 Restored prošlogodišnje cijene from minimal format:', proslogodisnjeCijene.length);
+                    
+                    // Update filtered array if it exists
+                    if (typeof filteredProslogodisnjeCijene !== 'undefined') {
+                        filteredProslogodisnjeCijene = [...proslogodisnjeCijene];
+                    }
+                }
             }
-        }
-        
-        if (state.tablicaRabata && Array.isArray(state.tablicaRabata)) {
-            if (typeof tablicaRabata !== 'undefined') {
-                tablicaRabata.push(...state.tablicaRabata);
-                // console.log('📊 Restored tablica rabata:', tablicaRabata.length);
+            
+            // Load finalWeightDatabase → weightDatabase Map
+            if (state.finalWeightDatabase && Array.isArray(state.finalWeightDatabase)) {
+                if (typeof weightDatabase !== 'undefined') {
+                    weightDatabase.clear(); // Clear existing
+                    state.finalWeightDatabase.forEach(item => {
+                        if (item.sifra && item.tezina) {
+                            weightDatabase.set(item.sifra, item.tezina);
+                        }
+                    });
+                    console.log('⚖️ Restored weight database from minimal format:', weightDatabase.size);
+                }
+            }
+            
+            // Load finalPdvDatabase → pdvDatabase Map
+            if (state.finalPdvDatabase && Array.isArray(state.finalPdvDatabase)) {
+                if (typeof pdvDatabase !== 'undefined') {
+                    pdvDatabase.clear(); // Clear existing
+                    state.finalPdvDatabase.forEach(item => {
+                        if (item.sifra && typeof item.pdv === 'number') {
+                            pdvDatabase.set(item.sifra, item.pdv);
+                        }
+                    });
+                    console.log('📊 Restored PDV database from minimal format:', pdvDatabase.size);
+                }
+            }
+            
+            // CRITICAL: Recreate weightTableData array for UI display
+            if (typeof weightTableData !== 'undefined' && typeof weightDatabase !== 'undefined') {
+                weightTableData.length = 0; // Clear existing array
+                
+                // Recreate weightTableData from weightDatabase and pdvDatabase
+                for (const [sifra, tezinaKg] of weightDatabase) {
+                    const pdvStopa = pdvDatabase.has(sifra) ? pdvDatabase.get(sifra) : 0;
+                    const tarifniBroj = pdvStopa === 25 ? '1' : pdvStopa === 5 ? '5' : '';
+                    
+                    const weightData = {
+                        sifra: sifra,
+                        podgrupa: '',
+                        naziv: '',
+                        jedinica: '',
+                        tarifniBroj: tarifniBroj,
+                        pdvStopa: pdvStopa,
+                        dobavljac: '',
+                        tezinaKg: tezinaKg,
+                        originalTezina: tezinaKg.toString(),
+                        isValid: tezinaKg > 0,
+                        usageCount: 0
+                    };
+                    
+                    weightTableData.push(weightData);
+                }
+                
+                console.log('🔄 Recreated weightTableData for UI display:', weightTableData.length);
+                
+                // Update the weights display after recreation
+                if (typeof updateWeightsTableDisplay === 'function') {
+                    updateWeightsTableDisplay();
+                    console.log('✅ Weights table display updated');
+                }
+            }
+            
+        } else {
+            // FULL FORMAT: Load all data as before
+            console.log('🔄 Processing full format JSON...');
+            
+            // Restore core data arrays safely
+            if (state.articles && Array.isArray(state.articles)) {
+                if (typeof articles !== 'undefined') {
+                    articles.push(...state.articles);
+                    // console.log('📊 Restored articles:', articles.length);
+                }
+            }
+            
+            if (state.results && Array.isArray(state.results)) {
+                if (typeof results !== 'undefined') {
+                    results.push(...state.results);
+                    // console.log('🎯 Restored results:', results.length);
+                }
+            }
+            
+            if (state.troskovnik && Array.isArray(state.troskovnik)) {
+                if (typeof troskovnik !== 'undefined') {
+                    troskovnik.push(...state.troskovnik);
+                    // console.log('📋 Restored troškovnik:', troskovnik.length);
+                }
+            }
+            
+            if (state.preracunResults && Array.isArray(state.preracunResults)) {
+                if (typeof preracunResults !== 'undefined') {
+                    preracunResults.push(...state.preracunResults);
+                    // console.log('💰 Restored preračun:', preracunResults.length);
+                }
+            }
+            
+            if (state.tablicaRabata && Array.isArray(state.tablicaRabata)) {
+                if (typeof tablicaRabata !== 'undefined') {
+                    tablicaRabata.push(...state.tablicaRabata);
+                    // console.log('📊 Restored tablica rabata:', tablicaRabata.length);
+                }
             }
         }
         
@@ -247,6 +440,11 @@ function updateAllDisplays() {
             updateTablicaRabataDisplay();
         }
         
+        // Update prošlogodišnje cijene stats if available
+        if (typeof updateProslogodisnjeCijeneStats === 'function') {
+            updateProslogodisnjeCijeneStats();
+        }
+        
         // console.log('✅ All displays updated');
         
     } catch (error) {
@@ -258,13 +456,71 @@ function updateAllDisplays() {
  * Saves the current application state as a JSON file download
  */
 function saveAppState() {
+    // Use the new dialog-based save
+    if (typeof saveStateWithDialog === 'function') {
+        saveStateWithDialog();
+    } else {
+        console.warn('saveStateWithDialog not available, falling back to direct download');
+        // Fallback to old behavior
+        try {
+            const state = serializeAppState();
+            
+            // Generate filename with timestamp
+            const now = new Date();
+            const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-');
+            const filename = `Trazilica-Stanje-${timestamp}.json`;
+            
+            // Create and download JSON file
+            const jsonString = JSON.stringify(state, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            // Show success message with file info
+            const fileSizeKB = Math.round(blob.size / 1024);
+            showMessage('success', 
+                `✅ Stanje aplikacije spremljeno!\n\n` +
+                `📁 Datoteka: ${filename}\n` +
+                `📊 Veličina: ${fileSizeKB} KB\n` +
+                `📦 Artikli: ${state.stats.articlesCount}\n` +
+                `🎯 Rezultati: ${state.stats.resultsCount}\n` +
+                `📋 Troškovnik: ${state.stats.troskovnikCount}\n` +
+                `💰 Preračun: ${state.stats.preracunCount}\n` +
+                `📊 Tablica rabata: ${state.stats.tablicaRabataCount}\n\n` +
+                `💡 Povucite datoteku natrag u aplikaciju za vraćanje stanja!`
+            );
+            
+            // Mark as saved
+            if (typeof AppState !== 'undefined' && AppState.markAsSaved) {
+                AppState.markAsSaved();
+            }
+            
+        } catch (error) {
+            console.error('❌ Save state error:', error);
+            showMessage('error', `Greška pri spremanju: ${error.message}`);
+        }
+    }
+}
+
+// CRITICAL: Expose saveAppState immediately after definition
+window.saveAppState = saveAppState;
+
+/**
+ * Saves COMPLETE working data (results + final data + supporting databases) as a JSON file download
+ */
+function saveMinimalAppState() {
     try {
-        const state = serializeAppState();
+        const state = serializeMinimalState();
         
         // Generate filename with timestamp
         const now = new Date();
         const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-');
-        const filename = `Trazilica-Stanje-${timestamp}.json`;
+        const filename = `Trazilica-Complete-Data-${timestamp}.json`;
         
         // Create and download JSON file
         const jsonString = JSON.stringify(state, null, 2);
@@ -279,33 +535,34 @@ function saveAppState() {
         
         // Show success message with file info
         const fileSizeKB = Math.round(blob.size / 1024);
+        const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+        
         showMessage('success', 
-            `✅ Stanje aplikacije spremljeno!\n\n` +
+            `✅ Kompletni podaci spremljeni!\n\n` +
             `📁 Datoteka: ${filename}\n` +
-            `📊 Veličina: ${fileSizeKB} KB\n` +
-            `📦 Artikli: ${state.stats.articlesCount}\n` +
-            `🎯 Rezultati: ${state.stats.resultsCount}\n` +
-            `📋 Troškovnik: ${state.stats.troskovnikCount}\n` +
-            `💰 Preračun: ${state.stats.preracunCount}\n` +
-            `📊 Tablica rabata: ${state.stats.tablicaRabataCount}\n\n` +
-            `💡 Povucite datoteku natrag u aplikaciju za vraćanje stanja!`
+            `📊 Veličina: ${fileSizeKB} KB (${fileSizeMB} MB)\n` +
+            `🎯 Rezultati: ${state.finalResults.length} stavki\n` +
+            `📋 Troškovnik: ${state.finalTroskovnik.length} stavki\n` +
+            `📊 Tablica rabata: ${state.finalTablicaRabata.length} stavki\n` +
+            `📅 Prošlogodišnje cijene: ${state.finalProslogodisnjeCijene.length} stavki\n` +
+            `⚖️ Težine: ${state.finalWeightDatabase.length} stavki\n` +
+            `💰 Ukupna vrijednost: ${state.summary.totalValueEUR} EUR\n\n` +
+            `🎯 Kompletni podaci - još uvijek 95%+ manji od full backup!\n` +
+            `💡 Ovaj file omogućava potpunu offline funkcionalnost.`
         );
         
-        // Mark as saved
-        if (typeof AppState !== 'undefined' && AppState.markAsSaved) {
-            AppState.markAsSaved();
-        }
-        
-        // console.log('💾 App state saved:', filename, `${fileSizeKB} KB`);
+        console.log(`✅ Minimal state saved: ${filename} (${fileSizeKB} KB)`);
         
     } catch (error) {
-        console.error('❌ Save state error:', error);
-        showMessage('error', `Greška pri spremanju: ${error.message}`);
+        console.error('❌ Error saving minimal state:', error);
+        showMessage('error', 
+            `❌ Greška pri spremanju minimalnih rezultata!\n\n${error.message}`
+        );
     }
 }
 
-// CRITICAL: Expose saveAppState immediately after definition
-window.saveAppState = saveAppState;
+// Expose minimal save function globally
+window.saveMinimalAppState = saveMinimalAppState;
 
 /**
  * Loads application state from a JSON file
@@ -347,17 +604,39 @@ function loadAppState(file) {
             }
             
             // Confirm with user before loading
-            const stats = state.stats || {};
-            const confirmMessage = 
-                `Učitati stanje aplikacije iz datoteke?\n\n` +
-                `📁 Datoteka: ${file.name}\n` +
-                `📅 Stvoreno: ${state.timestamp ? new Date(state.timestamp).toLocaleString('hr-HR') : 'Nepoznato'}\n` +
-                `📊 Artikli: ${stats.articlesCount || 0}\n` +
-                `🎯 Rezultati: ${stats.resultsCount || 0}\n` +
-                `📋 Troškovnik: ${stats.troskovnikCount || 0}\n` +
-                `💰 Preračun: ${stats.preracunCount || 0}\n` +
-                `📊 Tablica rabata: ${stats.tablicaRabataCount || 0}\n\n` +
-                `⚠️ Ovo će zamijeniti trenutno stanje aplikacije!`;
+            const isMinimal = state.version === 'minimal-1.0';
+            let confirmMessage;
+            
+            if (isMinimal) {
+                // Minimal format confirmation
+                const summary = state.summary || {};
+                confirmMessage = 
+                    `Učitati kompletne podatke iz datoteke?\n\n` +
+                    `📁 Datoteka: ${file.name}\n` +
+                    `📅 Stvoreno: ${state.timestamp ? new Date(state.timestamp).toLocaleString('hr-HR') : 'Nepoznato'}\n` +
+                    `🎯 Format: KOMPLETNI PODACI (bez artikala)\n` +
+                    `🎯 Rezultati: ${state.finalResults?.length || 0} stavki\n` +
+                    `📋 Troškovnik: ${state.finalTroskovnik?.length || 0} stavki\n` +
+                    `📊 Tablica rabata: ${state.finalTablicaRabata?.length || 0} stavki\n` +
+                    `📅 Prošlogodišnje cijene: ${state.finalProslogodisnjeCijene?.length || 0} stavki\n` +
+                    `⚖️ Težine: ${state.finalWeightDatabase?.length || 0} stavki\n` +
+                    `💰 Ukupno: ${summary.totalValueEUR || 0} EUR\n\n` +
+                    `⚠️ Ovo će zamijeniti trenutno stanje aplikacije!`;
+            } else {
+                // Full format confirmation
+                const stats = state.stats || {};
+                confirmMessage = 
+                    `Učitati kompletno stanje aplikacije iz datoteke?\n\n` +
+                    `📁 Datoteka: ${file.name}\n` +
+                    `📅 Stvoreno: ${state.timestamp ? new Date(state.timestamp).toLocaleString('hr-HR') : 'Nepoznato'}\n` +
+                    `🎯 Format: KOMPLETNO stanje\n` +
+                    `📊 Artikli: ${stats.articlesCount || 0}\n` +
+                    `🎯 Rezultati: ${stats.resultsCount || 0}\n` +
+                    `📋 Troškovnik: ${stats.troskovnikCount || 0}\n` +
+                    `💰 Preračun: ${stats.preracunCount || 0}\n` +
+                    `📊 Tablica rabata: ${stats.tablicaRabataCount || 0}\n\n` +
+                    `⚠️ Ovo će zamijeniti trenutno stanje aplikacije!`;
+            }
                 
             if (!confirm(confirmMessage)) {
                 showMessage('info', 'Učitavanje otkazano.');
@@ -368,16 +647,28 @@ function loadAppState(file) {
             const success = deserializeAppState(state);
             
             if (success) {
-                showMessage('success', 
-                    `✅ Stanje aplikacije uspješno učitano!\n\n` +
+                const successMessage = isMinimal ? 
+                    `✅ Kompletni podaci uspješno učitani!\n\n` +
                     `📁 Iz datoteke: ${file.name}\n` +
+                    `🎯 Format: KOMPLETNI PODACI (~200KB file)\n` +
+                    `🎯 Rezultati: ${results.length} stavki\n` +
+                    `📋 Troškovnik: ${troskovnik.length} stavki\n` +
+                    `📊 Tablica rabata: ${tablicaRabata.length} stavki\n` +
+                    `📅 Prošlogodišnje cijene: ${proslogodisnjeCijene.length} stavki\n` +
+                    `⚖️ Težine: ${weightDatabase.size} stavki\n\n` +
+                    `💡 Svi podaci učitani - aplikacija je potpuno funkcionalna offline!`
+                    :
+                    `✅ Kompletno stanje aplikacije uspješno učitano!\n\n` +
+                    `📁 Iz datoteke: ${file.name}\n` +
+                    `🎯 Format: KOMPLETNO stanje\n` +
                     `📊 Artikli: ${articles.length}\n` +
                     `🎯 Rezultati: ${results.length}\n` +
                     `📋 Troškovnik: ${troskovnik.length}\n` +
                     `💰 Preračun: ${preracunResults.length}\n` +
                     `📊 Tablica rabata: ${tablicaRabata.length}\n` +
-                    `✅ Odabrani: ${selectedResults.size}`
-                );
+                    `✅ Odabrani: ${selectedResults.size}`;
+                    
+                showMessage('success', successMessage);
             }
             
         } catch (error) {
@@ -500,8 +791,76 @@ function quickSaveState() {
     }
 }
 
-// CRITICAL: Expose quickSaveState immediately after definition
+/**
+ * Save state with user file picker dialog
+ */
+async function saveStateWithDialog() {
+    try {
+        const state = serializeAppState();
+        const jsonString = JSON.stringify(state, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        
+        // Try File System Access API (modern browsers)
+        if ('showSaveFilePicker' in window) {
+            try {
+                const fileHandle = await window.showSaveFilePicker({
+                    suggestedName: `Trazilica-Stanje-${new Date().toISOString().slice(0, 10)}.json`,
+                    types: [{
+                        description: 'JSON datoteke',
+                        accept: { 'application/json': ['.json'] }
+                    }]
+                });
+                
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                
+                // Mark as saved
+                if (typeof AppState !== 'undefined' && AppState.markAsSaved) {
+                    AppState.markAsSaved();
+                }
+                
+                const fileSizeKB = Math.round(blob.size / 1024);
+                showMessage('success', `💾 Uspješno spremljeno! (${fileSizeKB} KB)`);
+                return true;
+                
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    showMessage('info', 'Spremanje je prekinuto.');
+                    return false;
+                }
+                throw err;
+            }
+        } else {
+            // Fallback to traditional download
+            const filename = `Trazilica-Stanje-${new Date().toISOString().slice(0, 10)}.json`;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            // Mark as saved
+            if (typeof AppState !== 'undefined' && AppState.markAsSaved) {
+                AppState.markAsSaved();
+            }
+            
+            const fileSizeKB = Math.round(blob.size / 1024);
+            showMessage('success', `💾 Spremljeno u Downloads! (${filename}, ${fileSizeKB} KB)`);
+            return true;
+        }
+        
+    } catch (error) {
+        console.error('❌ Save dialog error:', error);
+        showMessage('error', `Greška pri spremanju: ${error.message}`);
+        return false;
+    }
+}
+
+// CRITICAL: Expose save functions immediately after definition
 window.quickSaveState = quickSaveState;
+window.saveStateWithDialog = saveStateWithDialog;
 
 /**
  * Saves only troškovnik data (much smaller file)
