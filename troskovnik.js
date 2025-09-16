@@ -44,6 +44,15 @@ const TROSKOVNIK_CONFIG = {
     }
 };
 
+// ===== EXCEL METADATA STORAGE =====
+// Global storage for Excel troškovnik metadata
+let excelTroskovnikData = {
+    procjenjena_vrijednost: null,    // X2
+    garancija: null,                 // W20
+    nacin_predaje: null,             // W21
+    datum_predaje: null              // W22
+};
+
 // ===== DECIMAL QUANTITY PARSING =====
 /**
  * Parse decimal quantities with Croatian localization support
@@ -114,7 +123,8 @@ class TroskovnikData {
             // Calculated fields
             najniza_cijena: 0,
             marza: 0,
-            found_results: 0
+            found_results: 0,
+            ruc_per_kg: 0
         };
     }
     
@@ -135,15 +145,50 @@ class TroskovnikData {
         if (['izlazna_cijena', 'nabavna_cijena_1', 'nabavna_cijena_2'].includes(field)) {
             const oldValue = item[field];
             item[field] = this.formatNumber(value, 2);
+            
+            // NEW: Bidirectional sync - update ruc_per_kg when prices change
+            if (field === 'izlazna_cijena' || field === 'nabavna_cijena_1') {
+                const ruc = item.izlazna_cijena - item.nabavna_cijena_1;
+                const weight = parseFloat(item.tezina) || 0;
+                if (weight > 0) {
+                    item.ruc_per_kg = this.formatNumber(ruc / weight, 2);
+                } else {
+                    item.ruc_per_kg = 0;
+                }
+                // console.log(`🔄 Price sync: ${field} → RUC/KG updated to ${item.ruc_per_kg}`);
+            }
             // console.log(`💰 Price update: ${field} ${oldValue} → ${item[field]}`);
         } else if (field === 'tezina') {
             const oldValue = item[field];
             item[field] = this.formatNumber(value, 3);
-            // console.log(`⚖️ Weight update: ${field} ${oldValue} → ${item[field]}`);
+            
+            // NEW: When weight changes, update ruc_per_kg
+            const ruc = item.izlazna_cijena - item.nabavna_cijena_1;
+            const weight = parseFloat(item[field]) || 0;
+            if (weight > 0 && ruc > 0) {
+                item.ruc_per_kg = this.formatNumber(ruc / weight, 2);
+            } else {
+                item.ruc_per_kg = 0;
+            }
+            // console.log(`⚖️ Weight update: ${field} ${oldValue} → ${item[field]}, RUC/KG → ${item.ruc_per_kg}`);
         } else if (field === 'trazena_kolicina') {
             const oldValue = item[field];
             item[field] = parseDecimalQuantity(value) || 0;
             // console.log(`📦 Quantity update: ${field} ${oldValue} → ${item[field]} (decimal support)`);
+        } else if (field === 'ruc_per_kg') {
+            const oldValue = item[field];
+            const newRucPerKg = this.formatNumber(value, 2);
+            item[field] = newRucPerKg;
+            
+            // Reverse calculation: update izlazna_cijena based on ruc_per_kg
+            // Formula: izlazna_cijena = nabavna_cijena_1 + (ruc_per_kg * tezina)
+            const weight = parseFloat(item.tezina) || 0;
+            if (weight > 0 && newRucPerKg >= 0) {
+                const newIzlaznaCijena = item.nabavna_cijena_1 + (newRucPerKg * weight);
+                item.izlazna_cijena = this.formatNumber(newIzlaznaCijena, 2);
+                // console.log(`🔄 RUC/KG reverse calc: ${newRucPerKg}€/kg * ${weight}kg = ${newIzlaznaCijena}€ output price`);
+            }
+            // console.log(`📊 RUC/KG update: ${field} ${oldValue} → ${item[field]}`);
         } else {
             const oldValue = item[field];
             item[field] = value || '';
@@ -199,6 +244,15 @@ class TroskovnikData {
             item.marza = this.formatNumber(item.marza, 1);
         } else {
             item.marza = 0;
+        }
+        
+        // Always recalculate ruc_per_kg for bidirectional synchronization
+        const ruc = item.izlazna_cijena - item.nabavna_cijena_1;
+        const weight = parseFloat(item.tezina) || 0;
+        if (weight > 0) {
+            item.ruc_per_kg = this.formatNumber(ruc / weight, 2);
+        } else {
+            item.ruc_per_kg = 0;
         }
     }
     
@@ -295,6 +349,11 @@ class TroskovnikUI {
         if (csvBtn) csvBtn.textContent = 'Export CSV (' + troskovnik.length + ')';
         if (excelBtn) excelBtn.textContent = 'Export Excel (' + troskovnik.length + ')';
         if (saveBtn) saveBtn.textContent = '💾 Spremi troškovnik (' + troskovnik.length + ')';
+        
+        // Apply stored column widths after rendering
+        setTimeout(() => {
+            applyStoredColumnWidths();
+        }, 0);
     }
     
     static fixTableHeaders() {
@@ -312,21 +371,38 @@ class TroskovnikUI {
         };
         thead.innerHTML = 
             '<tr style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: white;">' +
-            '<th style="width: 60px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer;" onclick="sortTroskovnikBy(\'redni_broj\')">R.B.' + sortIcon('redni_broj') + '</th>' +
-            '<th style="width: 350px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: left; font-size: 14px; word-wrap: break-word; overflow-wrap: break-word;">Naziv artikla</th>' +
-            '<th style="width: 60px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">J.M.</th>' +
-            '<th style="width: 70px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">Težina (kg)</th>' +
-            '<th style="width: 65px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">Količina</th>' +
-            '<th style="width: 90px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">Izlazna cijena (€)</th>' +
-            '<th style="width: 70px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">RUC (€)</th>' +
-            '<th style="width: 90px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">Nabavna 1 (€)</th>' +
-            '<th style="width: 100px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">Dobavljač 1</th>' +
-            '<th style="width: 90px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">Nabavna 2 (€)</th>' +
-            '<th style="width: 100px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">Dobavljač 2</th>' +
-            '<th style="width: 60px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">Marža (%)</th>' +
-            '<th style="width: 70px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; background: #dc2626; font-size: 14px; cursor:pointer;" onclick="sortTroskovnikBy(\'udio\')">📊 Udio (%)' + sortIcon('udio') + '</th>' +
-            '<th style="width: 70px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">Rezultati</th>' +
-            '<th style="width: 80px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; background: #059669; font-size: 14px;">💰 Vrijednost (€)</th>' +
+            '<th style="width: 60px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'redni_broj\')">R.B.' + sortIcon('redni_broj') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 0)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 350px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: left; font-size: 14px; word-wrap: break-word; overflow-wrap: break-word; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'naziv_artikla\')">Naziv artikla' + sortIcon('naziv_artikla') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 1)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 60px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'mjerna_jedinica\')">J.M.' + sortIcon('mjerna_jedinica') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 2)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 70px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'tezina\')">Težina (kg)' + sortIcon('tezina') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 3)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 65px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'trazena_kolicina\')">Količina' + sortIcon('trazena_kolicina') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 4)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 90px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'izlazna_cijena\')">Izlazna cijena (€)' + sortIcon('izlazna_cijena') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 5)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 85px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'ruc_per_kg\')">RUC/KG (€/kg)' + sortIcon('ruc_per_kg') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 6)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 70px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'ruc\')">RUC (€)' + sortIcon('ruc') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 7)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 90px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'nabavna_cijena_1\')">Nabavna 1 (€)' + sortIcon('nabavna_cijena_1') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 8)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 100px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'dobavljac_1\')">Dobavljač 1' + sortIcon('dobavljac_1') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 9)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 90px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'nabavna_cijena_2\')">Nabavna 2 (€)' + sortIcon('nabavna_cijena_2') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 10)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 100px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'dobavljac_2\')">Dobavljač 2' + sortIcon('dobavljac_2') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 11)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 60px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'marza\')">Marža (%)' + sortIcon('marza') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 12)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 70px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; background: #dc2626; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'udio\')">📊 Udio (%)' + sortIcon('udio') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 13)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 70px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'found_results\')">Rezultati' + sortIcon('found_results') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 14)" title="Povuci za promjenu širine stupca"></div></th>' +
+            '<th style="width: 80px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; background: #059669; font-size: 14px; cursor:pointer; position:relative;" onclick="sortTroskovnikBy(\'vrijednost\')">💰 Vrijednost (€)' + sortIcon('vrijednost') + 
+                '<div class="resize-handle" style="position:absolute;right:-5px;top:0;bottom:0;width:10px;cursor:col-resize;background:rgba(255,255,255,0.8);border-left:2px solid rgba(255,255,255,0.9);border-right:2px solid rgba(255,255,255,0.9);z-index:10;" onmousedown="startColumnResize(event, 15)" title="Povuci za promjenu širine stupca"></div></th>' +
             '<th style="width: 100px; padding: 10px; border: 1px solid #6d28d9; font-weight: bold; text-align: center; font-size: 14px;">Akcije</th>' +
             '</tr>';
     }
@@ -352,28 +428,71 @@ class TroskovnikUI {
 
         // Izračun ukupne nabavne cijene
         const totalNabavna = troskovnik.reduce((sum, item) => sum + (Number(item.trazena_kolicina) * Number(item.nabavna_cijena_1)), 0);
+        
+        // Izračun RUC (razlika između ukupne izlazne i nabavne)
+        const totalRUC = grandTotal - totalNabavna;
+        
+        // Izračun ukupne težine (količina * težina za sve stavke)
+        const totalTezina = troskovnik.reduce((sum, item) => {
+            const kolicina = Number(item.trazena_kolicina) || 0;
+            const tezina = Number(item.tezina) || 0;
+            return sum + (kolicina * tezina);
+        }, 0);
+        
+        // Izračun RUC/KG
+        const rucPerKg = totalTezina > 0 ? totalRUC / totalTezina : 0;
+        
         // Izračun marže
         const marginPercent = (totalNabavna > 0) ? ((grandTotal - totalNabavna) / totalNabavna * 100) : 0;
+        
+        // Formatiranje vrijednosti
         const formattedTotal = '€' + grandTotal.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         const formattedNabavna = '€' + totalNabavna.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const formattedRUC = '€' + totalRUC.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const formattedTotalTezina = totalTezina.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' kg';
+        const formattedRucPerKg = '€' + rucPerKg.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '/kg';
         const formattedMargin = marginPercent.toLocaleString('hr-HR', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '%';
 
         if (summaryContainer) {
+            // Priprema Excel podataka za prikaz
+            const excelDataHtml = (excelTroskovnikData.procjenjena_vrijednost || 
+                                   excelTroskovnikData.garancija || 
+                                   excelTroskovnikData.nacin_predaje || 
+                                   excelTroskovnikData.datum_predaje) ?
+                '<div style="font-size: 14px; color: #374151; min-width: 200px; background: #f8fafc; padding: 8px; border-radius: 6px; border-left: 3px solid #059669;">' +
+                    '<div style="font-weight: bold; margin-bottom: 4px;">📄 Excel podaci:</div>' +
+                    (excelTroskovnikData.procjenjena_vrijednost ? '<div>💰 Procjenjena: ' + excelTroskovnikData.procjenjena_vrijednost + '</div>' : '') +
+                    (excelTroskovnikData.garancija ? '<div>🛡️ Garancija: ' + excelTroskovnikData.garancija + '</div>' : '') +
+                    (excelTroskovnikData.nacin_predaje ? '<div>📦 Predaja: ' + excelTroskovnikData.nacin_predaje + '</div>' : '') +
+                    (excelTroskovnikData.datum_predaje ? '<div>📅 Datum: ' + excelTroskovnikData.datum_predaje + '</div>' : '') +
+                '</div>' : '';
+
             summaryContainer.innerHTML = 
-                '<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; margin-bottom: 6px;">' +
-                    '<div style="font-size: 16px; font-weight: bold; color: #374151; min-width: 320px;">' +
-                        '📊 <span style="color: #7c3aed;">Troškovnik s izračunima</span>: ' + troskovnik.length + ' stavki • ' +
-                        '💰 <span style="color: #059669;">S vrijednošću</span>: ' + itemsWithValue + ' stavki' +
+                '<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 6px;">' +
+                    // Lijevi dio - postojeći podaci
+                    '<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 24px; flex: 1;">' +
+                        '<div style="font-size: 16px; font-weight: bold; color: #374151; min-width: 320px;">' +
+                            '📊 <span style="color: #7c3aed;">Troškovnik s izračunima</span>: ' + troskovnik.length + ' stavki • ' +
+                            '💰 <span style="color: #059669;">S vrijednošću</span>: ' + itemsWithValue + ' stavki' +
+                        '</div>' +
+                        '<div style="display: flex; gap: 16px; align-items: center; font-size: 16px; font-weight: bold; flex-wrap: wrap;">' +
+                            '<span style="color: #059669;">Ukupna izlazna: ' + formattedTotal + '</span>' +
+                            '<span style="color: #2563eb;">Nabavna: ' + formattedNabavna + '</span>' +
+                            '<span style="color: #dc2626;">RUC: ' + formattedRUC + '</span>' +
+                            '<span style="color: #f59e0b;">Ukupna težina: ' + formattedTotalTezina + '</span>' +
+                            '<span style="color: #8b5cf6;">RUC/KG: ' + formattedRucPerKg + '</span>' +
+                            '<span style="color: #dc2626;">Marža: ' + formattedMargin + '</span>' +
+                        '</div>' +
                     '</div>' +
-                    '<div style="display: flex; gap: 18px; align-items: center; font-size: 18px; font-weight: bold;">' +
-                        '<span style="color: #059669;">Ukupna izlazna: ' + formattedTotal + '</span>' +
-                        '<span style="color: #2563eb;">Nabavna: ' + formattedNabavna + '</span>' +
-                        '<span style="color: #dc2626;">Marža: ' + formattedMargin + '</span>' +
-                        '<button class="auto-btn" style="background: #059669; color: white; font-size: 15px; font-weight: bold; padding: 7px 18px; border-radius: 6px; margin-left: 18px;" onclick="TroskovnikActions.addAtPositionPrompt()">➕ Nova stavka</button>' +
+                    // Desni dio - Excel podaci (ako postoje)
+                    excelDataHtml +
+                    // Nova stavka gumb
+                    '<div>' +
+                        '<button class="auto-btn" style="background: #059669; color: white; font-size: 15px; font-weight: bold; padding: 7px 18px; border-radius: 6px;" onclick="TroskovnikActions.addAtPositionPrompt()">➕ Nova stavka</button>' +
                     '</div>' +
                 '</div>' +
                 '<div style="font-size: 13px; color: #6b7280;">' +
-                    '✅ <span style="color: #7c3aed;">Ukupne sume i postotni udjeli</span> • ' +
+                    '✅ <span style="color: #7c3aed;">Ukupne sume, težine i postotni udjeli</span> • ' +
                     'Kliknite stavku za komentare' +
                 '</div>';
         }
@@ -403,7 +522,7 @@ class TroskovnikUI {
     }
     
     static renderRow(item, grandTotal) {
-        const style = this.getRowStyle(item.found_results);
+        const style = this.getRowStyle(item.found_results, item);
         const comment = this.getCommentDisplay(item);
         const hover = this.getLastYearHover(item);
         const margin = this.getMarginDisplay(item.marza);
@@ -419,6 +538,7 @@ class TroskovnikUI {
             '<td style="text-align: center;">' + this.renderWeightInput(item) + '</td>' +
             '<td style="text-align: center;">' + this.renderQuantityInput(item) + '</td>' +
             '<td style="text-align: center;">' + this.renderPriceInput(item, 'izlazna_cijena', 100) + '</td>' +
+            '<td style="text-align: center;">' + this.renderRucPerKgInput(item) + '</td>' +
             '<td style="text-align: center; font-size: 14px;">' + this.getRucDisplay(item) + '</td>' +
             '<td style="text-align: center;">' + this.renderPriceInput(item, 'nabavna_cijena_1', 100, '#059669', '#ecfdf5') + '</td>' +
             '<td style="text-align: center;">' + this.renderTextInput(item, 'dobavljac_1', 80) + '</td>' +
@@ -450,12 +570,41 @@ class TroskovnikUI {
     }
     
     // Helper rendering methods
-    static getRowStyle(foundResults) {
-        const color = foundResults === 0 ? TROSKOVNIK_CONFIG.colors.noResults :
-                     foundResults <= 5 ? TROSKOVNIK_CONFIG.colors.fewResults :
-                     TROSKOVNIK_CONFIG.colors.manyResults;
+    static getRowStyle(foundResults, item) {
+        if (foundResults === 0) {
+            const color = TROSKOVNIK_CONFIG.colors.noResults;
+            return 'background: ' + color.bg + '; ' + (color.border ? 'border-left: ' + color.border + ';' : '');
+        }
         
-        return 'background: ' + color.bg + '; ' + (color.border ? 'border-left: ' + color.border + ';' : '');
+        // Determine article type by checking results for this RB
+        let isOurArticle = false;
+        if (typeof window.results !== 'undefined' && window.results.length > 0 && item) {
+            const resultsForThisRB = window.results.filter(r => r.rb == item.redni_broj);
+            
+            // Check if any result for this RB is a "truly our article"
+            isOurArticle = resultsForThisRB.some(result => {
+                if (result.source) {
+                    const source = result.source.toLowerCase();
+                    const hasCorrectSource = source.includes('lager') || source.includes('urpd');
+                    
+                    // Also check if it exists in weight database (for truly our articles)
+                    if (hasCorrectSource && result.code && typeof window.weightDatabase !== 'undefined') {
+                        return window.weightDatabase.has(result.code);
+                    }
+                    
+                    return hasCorrectSource;
+                }
+                return false;
+            });
+        }
+        
+        if (isOurArticle) {
+            // Our articles - green color
+            return 'background: #d1fae5; border-left: 2px solid #059669;';
+        } else {
+            // External articles - purple color
+            return 'background: #f3e8ff; border-left: 2px solid #7c3aed;';
+        }
     }
     
     static getCommentDisplay(item) {
@@ -506,13 +655,25 @@ class TroskovnikUI {
         return '<strong style="color: #059669; font-size: 16px;">' + formatted + '</strong>';
     }
     
+    static getRucPerKgDisplay(item) {
+        const ruc = item.izlazna_cijena - item.nabavna_cijena_1;
+        const weight = parseFloat(item.tezina) || 0;
+        
+        if (ruc <= 0 || weight <= 0) return '<span style="color: #6b7280; font-size: 14px;">-</span>';
+        
+        const rucPerKg = ruc / weight;
+        const formatted = '€' + rucPerKg.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        const textColor = '#000000'; // BLACK text color as requested
+        return '<strong style="color: ' + textColor + '; font-size: 16px;">' + formatted + '</strong>';
+    }
+
     static getRucDisplay(item) {
         const ruc = item.izlazna_cijena - item.nabavna_cijena_1;
         if (ruc <= 0) return '<span style="color: #6b7280; font-size: 14px;">-</span>';
         
         const formatted = '€' + ruc.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        const color = ruc > 5 ? '#059669' : ruc > 2 ? '#d97706' : '#dc2626';
-        return '<strong style="color: ' + color + '; font-size: 16px;">' + formatted + '</strong>';
+        const textColor = '#000000'; // BLACK text color as requested
+        return '<strong style="color: ' + textColor + '; font-size: 16px;">' + formatted + '</strong>';
     }
     
     static getPercentageDisplay(item, grandTotal) {
@@ -565,6 +726,24 @@ class TroskovnikUI {
                '</div>';
     }
     
+    static renderRucPerKgInput(item) {
+        const rucPerKg = item.ruc_per_kg || 0;
+        // NEW COLOR LOGIC: 0.00-0.24 = red, 0.25-0.30 = orange, 0.31+ = green
+        const borderColor = rucPerKg >= 0.31 ? '#059669' : rucPerKg >= 0.25 ? '#d97706' : '#dc2626';
+        const bg = rucPerKg >= 0.31 ? '#ecfdf5' : rucPerKg >= 0.25 ? '#fef3c7' : '#fef2f2';
+        const textColor = '#000000'; // BLACK text color as requested
+        
+        return '<div style="display: flex; align-items: center; gap: 3px;">' +
+               '<input type="number" step="0.01" value="' + rucPerKg.toFixed(2) + '"' +
+               ' onchange="TroskovnikData.update(' + item.id + ', \'ruc_per_kg\', this.value); TroskovnikUI.render()"' +
+               ' onfocus="this.select()"' +
+               ' style="width: 60px; padding: 6px; border: 1px solid ' + borderColor + '; border-radius: 4px;' +
+               ' font-size: 14px; font-weight: bold; color: ' + textColor + '; background: ' + bg + ';"' +
+               ' title="Editabilan RUC po kilogramu" placeholder="0.00" id="ruc_per_kg-' + item.id + '">' +
+               '<span style="font-size: 12px; color: #6b7280; font-weight: normal;">€/kg</span>' +
+               '</div>';
+    }
+
     static renderTextInput(item, field, width) {
         const placeholder = field.includes('dobavljac') ? 'dobavljača' : 'tekst';
         return '<input type="text" value="' + (item[field] || '') + '"' +
@@ -931,6 +1110,40 @@ function processExcelTroskovnik(file) {
                 blankrows: false
             });
             
+            // NOVO: Čitanje Excel metadata iz specifičnih ćelija
+            try {
+                // X2 - Procjenjena vrijednost
+                const x2Cell = worksheet['X2'];
+                if (x2Cell && x2Cell.v) {
+                    excelTroskovnikData.procjenjena_vrijednost = String(x2Cell.v).trim();
+                }
+                
+                // W20 - Garancija DA/NE
+                const w20Cell = worksheet['W20'];
+                if (w20Cell && w20Cell.v) {
+                    excelTroskovnikData.garancija = String(w20Cell.v).trim();
+                }
+                
+                // W21 - Način predaje
+                const w21Cell = worksheet['W21'];
+                if (w21Cell && w21Cell.v) {
+                    excelTroskovnikData.nacin_predaje = String(w21Cell.v).trim();
+                }
+                
+                // W22 - Datum i sat predaje
+                const w22Cell = worksheet['W22'];
+                if (w22Cell && w22Cell.v) {
+                    excelTroskovnikData.datum_predaje = String(w22Cell.v).trim();
+                }
+                
+                // Log učitane Excel podatke
+                console.log('📊 Excel metadata učitano:', excelTroskovnikData);
+                
+            } catch (metaError) {
+                console.log('⚠️ Problem s čitanjem Excel metadata:', metaError.message);
+                // Nastavi dalje bez metadata - nije kritična greška
+            }
+            
             // Debug first few rows
             // console.log('🔍 Excel Debug - First 3 rows:');
             for (let i = 0; i < Math.min(3, jsonData.length); i++) {
@@ -940,8 +1153,8 @@ function processExcelTroskovnik(file) {
             
             const troskovnikItems = [];
             
-            // Process each row (skip header)
-            for (let i = 1; i < jsonData.length; i++) {
+            // Process each row (skip header + 1 additional row)
+            for (let i = 2; i < jsonData.length; i++) {
                 const values = jsonData[i].map(v => String(v || '').trim());
                 if (values.length < 2) continue;
                 
@@ -1144,13 +1357,17 @@ function refreshTroskovnikColors() {
     if (!troskovnik || troskovnik.length === 0) return;
     
     // Reset counters
-    troskovnik.forEach(item => { item.found_results = 0; });
+    troskovnik.forEach(item => { 
+        item.found_results = 0;
+    });
     
     // Count results
     if (results && results.length > 0) {
         results.forEach(result => {
             const item = troskovnik.find(t => t.redni_broj == result.rb);
-            if (item) item.found_results++;
+            if (item) {
+                item.found_results++;
+            }
         });
     }
     
@@ -1165,10 +1382,10 @@ function exportTroskovnikCSV() {
         return;
     }
     
-    // ENHANCED: CSV headers with PDV columns
+    // ENHANCED: CSV headers with PDV columns and RUC/KG
     const csvHeaders = [
         'R.B.', 'Naziv artikla', 'J.M.', 'Težina (kg)', 'Količina', 'Izlazna cijena (€)', 
-        'RUC (€)', 'Nabavna 1 (€)', 'Dobavljač 1', 'Nabavna 2 (€)', 'Dobavljač 2', 
+        'RUC/KG (€/kg)', 'RUC (€)', 'Nabavna 1 (€)', 'Dobavljač 1', 'Nabavna 2 (€)', 'Dobavljač 2', 
         'Marža (%)', 'Najniža cijena (€)', 'Rezultati', 'Vrijednost (€)', 'Stopa PDV', 'Iznos PDV', 'Udio (%)', 'Komentar', 'Datum'
     ];
     
@@ -1189,20 +1406,30 @@ function exportTroskovnikCSV() {
         if (correspondingResults.length > 0) {
             // Try each result until we find one with PDV data
             for (const result of correspondingResults) {
-                // PRIORITY: Check for manual entries with custom PDV stopa
-                if (result.isManualEntry && result.customPdvStopa) {
-                    pdvStopa = result.customPdvStopa + '%';
-                    iznosPdv = (itemTotal * result.customPdvStopa / 100).toFixed(2);
-                    // console.log(`📋 Manual PDV found: RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
-                    break;
+                // CRITICAL FIX: Simplified PDV priority logic (same as Excel export)
+                let pdvValue = 0;
+                let pdvSource = '';
+                
+                // Priority 1: Manual entries (custom PDV)
+                if (result.isManualEntry && result.customPdvStopa && result.customPdvStopa > 0) {
+                    pdvValue = result.customPdvStopa;
+                    pdvSource = 'manual entry';
+                }
+                // Priority 2: External articles (custom PDV)  
+                else if (result.customPdvStopa && result.customPdvStopa > 0) {
+                    pdvValue = result.customPdvStopa;
+                    pdvSource = 'external custom';
+                }
+                // Priority 3: Google Sheets articles (direct PDV)
+                else if (result.pdvStopa && result.pdvStopa > 0) {
+                    pdvValue = result.pdvStopa;
+                    pdvSource = 'Google Sheets';
                 }
                 
-                // Check if this is an external article (not ours) with custom PDV stopa
-                if (!isTrulyOurArticle(result.source, result.code) && 
-                    result.customPdvStopa) {
-                    pdvStopa = result.customPdvStopa + '%';
-                    iznosPdv = (itemTotal * result.customPdvStopa / 100).toFixed(2);
-                    // console.log(`📋 Custom PDV found: RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
+                if (pdvValue > 0) {
+                    pdvStopa = pdvValue + '%';
+                    iznosPdv = (itemTotal * pdvValue / 100).toFixed(2);
+                    console.log(`✅ CSV PDV found (${pdvSource}): RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
                     break;
                 }
                 
@@ -1230,11 +1457,23 @@ function exportTroskovnikCSV() {
                             break;
                         }
                     }
+                    
+                    // Final fallback: Direct PDV database check
+                    if (!pdvStopa && typeof window.pdvDatabase !== 'undefined' && window.pdvDatabase.has(result.code)) {
+                        const pdvFromDb = window.pdvDatabase.get(result.code);
+                        if (pdvFromDb > 0) {
+                            pdvStopa = pdvFromDb + '%';
+                            iznosPdv = (itemTotal * pdvFromDb / 100).toFixed(2);
+                            break;
+                        }
+                    }
                 }
             }
         }
         
         const ruc = item.izlazna_cijena - item.nabavna_cijena_1;
+        const weight = parseFloat(item.tezina) || 0;
+        const rucPerKg = (ruc > 0 && weight > 0) ? (ruc / weight) : 0;
         
         return [
             item.redni_broj,
@@ -1243,6 +1482,7 @@ function exportTroskovnikCSV() {
             item.tezina.toFixed(3),
             item.trazena_kolicina,
             item.izlazna_cijena.toFixed(2),
+            item.ruc_per_kg > 0 ? item.ruc_per_kg.toFixed(2) : '', // RUC/KG (€/kg)
             ruc > 0 ? ruc.toFixed(2) : '', // RUC (€)
             item.nabavna_cijena_1.toFixed(2),
             item.dobavljac_1 || '',
@@ -1349,32 +1589,53 @@ function exportTroskovnikExcel() {
         // Find corresponding result item(s) for this troskovnik RB
         const correspondingResults = results.filter(result => result.rb === item.redni_broj);
         
+        // DEBUG: Log RB matching for troubleshooting
+        if (item.redni_broj <= 3) { // Only log first 3 items to avoid spam
+            console.log(`🔍 DEBUG Excel RB matching for item ${item.redni_broj}:`);
+            console.log(`   - item.redni_broj: "${item.redni_broj}" (type: ${typeof item.redni_broj})`);
+            console.log(`   - Found ${correspondingResults.length} results with matching RB`);
+            
+            if (correspondingResults.length === 0) {
+                // Check if there are any results with similar RB values
+                const allRBs = results.map(r => r.rb).slice(0, 10); // First 10 for debugging
+                console.log(`   - Available RBs in results: [${allRBs.join(', ')}]`);
+                console.log(`   - RB types in results: [${allRBs.map(rb => typeof rb).join(', ')}]`);
+            } else {
+                correspondingResults.forEach((result, idx) => {
+                    console.log(`   - Result ${idx + 1}: RB="${result.rb}", source="${result.source}", code="${result.code}", pdvStopa=${result.pdvStopa}`);
+                });
+            }
+        }
+        
         if (correspondingResults.length > 0) {
             // Try each result until we find one with PDV data
             for (const result of correspondingResults) {
                 console.log(`🔍 Excel checking result: ${result.name} (source: ${result.source}, code: ${result.code}, pdvStopa: ${result.pdvStopa}, customPdvStopa: ${result.customPdvStopa}, isManualEntry: ${result.isManualEntry})`);
                 
-                // PRIORITY: Check for manual entries with custom PDV stopa
-                if (result.isManualEntry && result.customPdvStopa) {
-                    pdvStopa = result.customPdvStopa + '%';
-                    iznosPdv = parseFloat((itemTotal * result.customPdvStopa / 100).toFixed(2));
-                    console.log(`✅ Excel MANUAL PDV found: RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
-                    break;
+                // CRITICAL FIX: Simplified PDV priority logic
+                let pdvValue = 0;
+                let pdvSource = '';
+                
+                // Priority 1: Manual entries (custom PDV)
+                if (result.isManualEntry && result.customPdvStopa && result.customPdvStopa > 0) {
+                    pdvValue = result.customPdvStopa;
+                    pdvSource = 'manual entry';
+                }
+                // Priority 2: External articles (custom PDV)  
+                else if (result.customPdvStopa && result.customPdvStopa > 0) {
+                    pdvValue = result.customPdvStopa;
+                    pdvSource = 'external custom';
+                }
+                // Priority 3: Google Sheets articles (direct PDV)
+                else if (result.pdvStopa && result.pdvStopa > 0) {
+                    pdvValue = result.pdvStopa;
+                    pdvSource = 'Google Sheets';
                 }
                 
-                // PRIORITY: Check for any custom PDV stopa (covers "PO CJENIKU" articles from Autocomplete)
-                if (result.customPdvStopa && result.customPdvStopa > 0) {
-                    pdvStopa = result.customPdvStopa + '%';
-                    iznosPdv = parseFloat((itemTotal * result.customPdvStopa / 100).toFixed(2));
-                    console.log(`✅ Excel CUSTOM PDV found: RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
-                    break;
-                }
-                
-                // PRIORITY: Check for direct PDV stopa in result object (from WEIGHT_DATABASE)
-                if (result.pdvStopa && result.pdvStopa > 0) {
-                    pdvStopa = result.pdvStopa + '%';
-                    iznosPdv = parseFloat((itemTotal * result.pdvStopa / 100).toFixed(2));
-                    console.log(`✅ Excel DIRECT PDV found in result object: RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
+                if (pdvValue > 0) {
+                    pdvStopa = pdvValue + '%';
+                    iznosPdv = parseFloat((itemTotal * pdvValue / 100).toFixed(2));
+                    console.log(`✅ Excel PDV found (${pdvSource}): RB${item.redni_broj} -> ${result.name} -> ${pdvStopa} = €${iznosPdv}`);
                     break;
                 }
                 
@@ -1400,7 +1661,18 @@ function exportTroskovnikExcel() {
                         if (weightData && weightData.pdvStopa > 0) {
                             pdvStopa = weightData.pdvStopa + '%';
                             iznosPdv = parseFloat((itemTotal * weightData.pdvStopa / 100).toFixed(2));
-                            // console.log(`💰 PDV found via weightTableData: RB${item.redni_broj} -> ${result.code} -> ${pdvStopa} = €${iznosPdv}`);
+                            console.log(`✅ Excel PDV found via weightTableData: RB${item.redni_broj} -> ${result.code} -> ${pdvStopa} = €${iznosPdv}`);
+                            break;
+                        }
+                    }
+                    
+                    // Final fallback: Direct PDV database check
+                    if (!pdvStopa && typeof window.pdvDatabase !== 'undefined' && window.pdvDatabase.has(result.code)) {
+                        const pdvFromDb = window.pdvDatabase.get(result.code);
+                        if (pdvFromDb > 0) {
+                            pdvStopa = pdvFromDb + '%';
+                            iznosPdv = parseFloat((itemTotal * pdvFromDb / 100).toFixed(2));
+                            console.log(`✅ Excel PDV found via pdvDatabase: RB${item.redni_broj} -> ${result.code} -> ${pdvStopa} = €${iznosPdv}`);
                             break;
                         }
                     }
@@ -1525,8 +1797,9 @@ function exportTroskovnikExcel() {
     
     XLSX.utils.book_append_sheet(wb, ws, 'Kompletni Troskovnik');
     
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-    const filename = 'Kompletni_Troskovnik_PDV_' + timestamp + '.xlsx';
+    // Generate filename using tender header data
+    const filenames = generateTenderFilenames('Troskovnik', 'xlsx');
+    const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Troskovnik.xlsx`;
     
     XLSX.writeFile(wb, filename);
     
@@ -1792,22 +2065,211 @@ let troskovnikSort = {
 };
 
 function sortTroskovnikBy(column) {
+    // Prevent sort if we just finished resizing
+    if (columnResizeData.wasResizing) {
+        return;
+    }
+    
     if (troskovnikSort.column === column) {
         troskovnikSort.direction = troskovnikSort.direction === 'asc' ? 'desc' : 'asc';
     } else {
         troskovnikSort.column = column;
         troskovnikSort.direction = 'asc';
     }
-    if (column === 'redni_broj') {
-        troskovnik.sort((a, b) => troskovnikSort.direction === 'asc' ? a.redni_broj - b.redni_broj : b.redni_broj - a.redni_broj);
-    } else if (column === 'udio') {
-        // Udio = (kolicina * izlazna_cijena) / grandTotal
-        const grandTotal = TroskovnikUI.calculateGrandTotal();
-        troskovnik.sort((a, b) => {
-            const aUdio = grandTotal > 0 ? (a.trazena_kolicina * a.izlazna_cijena) / grandTotal : 0;
-            const bUdio = grandTotal > 0 ? (b.trazena_kolicina * b.izlazna_cijena) / grandTotal : 0;
-            return troskovnikSort.direction === 'asc' ? aUdio - bUdio : bUdio - aUdio;
-        });
-    }
+    
+    const sortDirection = troskovnikSort.direction === 'asc' ? 1 : -1;
+    
+    troskovnik.sort((a, b) => {
+        let aVal, bVal;
+        
+        switch(column) {
+            case 'redni_broj':
+                return sortDirection * (a.redni_broj - b.redni_broj);
+                
+            case 'naziv_artikla':
+                aVal = (a.naziv_artikla || '').toString().toLowerCase();
+                bVal = (b.naziv_artikla || '').toString().toLowerCase();
+                return sortDirection * aVal.localeCompare(bVal, 'hr-HR');
+                
+            case 'mjerna_jedinica':
+                aVal = (a.mjerna_jedinica || '').toString().toLowerCase();
+                bVal = (b.mjerna_jedinica || '').toString().toLowerCase();
+                return sortDirection * aVal.localeCompare(bVal, 'hr-HR');
+                
+            case 'tezina':
+                aVal = parseFloat(a.tezina) || 0;
+                bVal = parseFloat(b.tezina) || 0;
+                return sortDirection * (aVal - bVal);
+                
+            case 'trazena_kolicina':
+                aVal = parseFloat(a.trazena_kolicina) || 0;
+                bVal = parseFloat(b.trazena_kolicina) || 0;
+                return sortDirection * (aVal - bVal);
+                
+            case 'izlazna_cijena':
+                aVal = parseFloat(a.izlazna_cijena) || 0;
+                bVal = parseFloat(b.izlazna_cijena) || 0;
+                return sortDirection * (aVal - bVal);
+                
+            case 'ruc_per_kg':
+                aVal = parseFloat(a.ruc_per_kg) || 0;
+                bVal = parseFloat(b.ruc_per_kg) || 0;
+                return sortDirection * (aVal - bVal);
+                
+            case 'ruc':
+                aVal = (parseFloat(a.izlazna_cijena) || 0) - (parseFloat(a.nabavna_cijena_1) || 0);
+                bVal = (parseFloat(b.izlazna_cijena) || 0) - (parseFloat(b.nabavna_cijena_1) || 0);
+                return sortDirection * (aVal - bVal);
+                
+            case 'nabavna_cijena_1':
+                aVal = parseFloat(a.nabavna_cijena_1) || 0;
+                bVal = parseFloat(b.nabavna_cijena_1) || 0;
+                return sortDirection * (aVal - bVal);
+                
+            case 'dobavljac_1':
+                aVal = (a.dobavljac_1 || '').toString().toLowerCase();
+                bVal = (b.dobavljac_1 || '').toString().toLowerCase();
+                return sortDirection * aVal.localeCompare(bVal, 'hr-HR');
+                
+            case 'nabavna_cijena_2':
+                aVal = parseFloat(a.nabavna_cijena_2) || 0;
+                bVal = parseFloat(b.nabavna_cijena_2) || 0;
+                return sortDirection * (aVal - bVal);
+                
+            case 'dobavljac_2':
+                aVal = (a.dobavljac_2 || '').toString().toLowerCase();
+                bVal = (b.dobavljac_2 || '').toString().toLowerCase();
+                return sortDirection * aVal.localeCompare(bVal, 'hr-HR');
+                
+            case 'marza':
+                aVal = parseFloat(a.marza) || 0;
+                bVal = parseFloat(b.marza) || 0;
+                return sortDirection * (aVal - bVal);
+                
+            case 'udio':
+                const grandTotal = TroskovnikUI.calculateGrandTotal();
+                aVal = grandTotal > 0 ? (a.trazena_kolicina * a.izlazna_cijena) / grandTotal : 0;
+                bVal = grandTotal > 0 ? (b.trazena_kolicina * b.izlazna_cijena) / grandTotal : 0;
+                return sortDirection * (aVal - bVal);
+                
+            case 'found_results':
+                aVal = parseInt(a.found_results) || 0;
+                bVal = parseInt(b.found_results) || 0;
+                return sortDirection * (aVal - bVal);
+                
+            case 'vrijednost':
+                aVal = (parseFloat(a.trazena_kolicina) || 0) * (parseFloat(a.izlazna_cijena) || 0);
+                bVal = (parseFloat(b.trazena_kolicina) || 0) * (parseFloat(b.izlazna_cijena) || 0);
+                return sortDirection * (aVal - bVal);
+                
+            default:
+                return 0;
+        }
+    });
+    
     TroskovnikUI.render();
+}
+
+// Column resize functionality
+let columnResizeData = {
+    isResizing: false,
+    columnIndex: null,
+    startX: 0,
+    startWidth: 0,
+    table: null,
+    wasResizing: false // Flag to prevent sort after resize
+};
+
+// Store custom column widths
+let columnWidths = {};
+
+function startColumnResize(event, columnIndex) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    columnResizeData.isResizing = true;
+    columnResizeData.wasResizing = true;
+    columnResizeData.columnIndex = columnIndex;
+    columnResizeData.startX = event.clientX;
+    columnResizeData.table = document.querySelector('#troskovnikTableContainer table');
+    
+    if (columnResizeData.table) {
+        const th = columnResizeData.table.querySelectorAll('th')[columnIndex];
+        columnResizeData.startWidth = th.offsetWidth;
+        
+        document.addEventListener('mousemove', handleColumnResize);
+        document.addEventListener('mouseup', endColumnResize);
+        
+        // Add visual feedback
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        
+        // Prevent any clicks on the header during resize
+        setTimeout(() => {
+            columnResizeData.wasResizing = false;
+        }, 200);
+    }
+}
+
+function handleColumnResize(event) {
+    if (!columnResizeData.isResizing || !columnResizeData.table) return;
+    
+    const deltaX = event.clientX - columnResizeData.startX;
+    const newWidth = Math.max(30, columnResizeData.startWidth + deltaX);
+    
+    // Store the new width
+    columnWidths[columnResizeData.columnIndex] = newWidth;
+    
+    // Update all cells in this column (header and body)
+    applyColumnWidth(columnResizeData.columnIndex, newWidth);
+}
+
+function applyColumnWidth(columnIndex, width) {
+    const table = document.querySelector('#troskovnikTableContainer table');
+    if (!table) return;
+    
+    const headers = table.querySelectorAll('th');
+    const rows = table.querySelectorAll('tbody tr, tfoot tr');
+    
+    if (headers[columnIndex]) {
+        headers[columnIndex].style.width = width + 'px';
+        headers[columnIndex].style.minWidth = width + 'px';
+        headers[columnIndex].style.maxWidth = width + 'px';
+    }
+    
+    // Update corresponding cells in all rows
+    rows.forEach(row => {
+        const cells = row.children;
+        if (cells[columnIndex]) {
+            cells[columnIndex].style.width = width + 'px';
+            cells[columnIndex].style.minWidth = width + 'px';
+            cells[columnIndex].style.maxWidth = width + 'px';
+        }
+    });
+}
+
+function endColumnResize(event) {
+    if (columnResizeData.isResizing && event) {
+        // Store final width
+        const deltaX = event.clientX - columnResizeData.startX;
+        const finalWidth = Math.max(30, columnResizeData.startWidth + deltaX);
+        columnWidths[columnResizeData.columnIndex] = finalWidth;
+    }
+    
+    columnResizeData.isResizing = false;
+    columnResizeData.columnIndex = null;
+    
+    document.removeEventListener('mousemove', handleColumnResize);
+    document.removeEventListener('mouseup', endColumnResize);
+    
+    // Remove visual feedback
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+}
+
+// Apply stored column widths after table render
+function applyStoredColumnWidths() {
+    Object.keys(columnWidths).forEach(columnIndex => {
+        applyColumnWidth(parseInt(columnIndex), columnWidths[columnIndex]);
+    });
 }

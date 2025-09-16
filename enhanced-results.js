@@ -98,6 +98,16 @@ function updateResultPrice(resultKey, priceType, value) {
         const troskovnikPrice = result.pricePerKg * troskovnikWeight;
         troskovnikItem.izlazna_cijena = Math.round(troskovnikPrice * 100) / 100;
         
+        // MISSING RUC/KG CALCULATION FIX: Calculate RUC per kilogram
+        // Formula: ruc_per_kg = (izlazna_cijena - nabavna_cijena_1) / tezina
+        const ruc = troskovnikItem.izlazna_cijena - troskovnikItem.nabavna_cijena_1;
+        const weight = parseFloat(troskovnikItem.tezina) || 0;
+        if (weight > 0) {
+            troskovnikItem.ruc_per_kg = Math.round((ruc / weight) * 100) / 100; // Round to 2 decimal places
+        } else {
+            troskovnikItem.ruc_per_kg = 0;
+        }
+        
         if (typeof updateTroskovnikDisplay === 'function') {
             updateTroskovnikDisplay();
         }
@@ -194,7 +204,7 @@ function updateResultsDisplay() {
         // Group results by RB
         const groupedResults = {};
         results.forEach(item => {
-            const rb = item.rb || 1;
+            const rb = item.rb || "PENDING";
             if (!groupedResults[rb]) groupedResults[rb] = [];
             groupedResults[rb].push(item);
         });
@@ -203,7 +213,17 @@ function updateResultsDisplay() {
         const totalPurchasingValue = calculateTotalPurchasingValue(groupedResults);
         const ourArticlesCount = results.filter(item => isTrulyOurArticle(item.source, item.code)).length;
         const withUserPricesCount = results.filter(item => item.hasUserPrice).length;
-        const sortedGroupOrder = Object.keys(groupedResults).map(rb => parseInt(rb)).sort((a, b) => a - b);
+        // Sort groups: PENDING first, then numeric order
+        const sortedGroupOrder = Object.keys(groupedResults).sort((a, b) => {
+            // PENDING group always first
+            if (a === "PENDING") return -1;
+            if (b === "PENDING") return 1;
+            
+            // Numeric sorting for regular RB values
+            const aNum = parseInt(a);
+            const bNum = parseInt(b);
+            return aNum - bNum;
+        });
 
         let html = '<div style="margin-bottom: 20px; padding: 16px; background: #f3f4f6; border-radius: 8px;">' +
             '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">' +
@@ -241,12 +261,13 @@ function updateResultsDisplay() {
             const groupItems = groupedResults[rb];
             if (!groupItems || groupItems.length === 0) return;
             
+            const isPendingGroup = rb === "PENDING";
             const groupSelectedCount = groupItems.filter(item => selectedResults.has(item.id + '-' + item.rb)).length;
             const allGroupSelected = groupSelectedCount === groupItems.length;
-            const groupPurchasingValue = calculateGroupPurchasingValue(rb, groupItems);
+            const groupPurchasingValue = isPendingGroup ? 0 : calculateGroupPurchasingValue(rb, groupItems);
             const groupShare = totalPurchasingValue > 0 ? (groupPurchasingValue / totalPurchasingValue * 100) : 0;
-            const troskovnikItem = getTroskovnikItemForRB(rb);
-            const troskovnikName = getTroskovnikNameForRB(rb);
+            const troskovnikItem = isPendingGroup ? null : getTroskovnikItemForRB(rb);
+            const troskovnikName = isPendingGroup ? "" : getTroskovnikNameForRB(rb);
             const troskovnikQuantity = troskovnikItem ? troskovnikItem.trazena_kolicina || 1 : 1;
             const lowestPrice = getLowestPriceInGroup(groupItems);
             const ourArticlesInGroup = groupItems.filter(item => isTrulyOurArticle(item.source, item.code)).length;
@@ -261,7 +282,36 @@ function updateResultsDisplay() {
             const groupId = 'group-' + rb;
             const isCollapsed = localStorage.getItem(groupId + '-collapsed') === 'true';
             
-            html += '<div class="card" id="group-' + rb + '" style="margin-bottom: 3px; border-left: 6px solid #7c3aed; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">' +
+            if (isPendingGroup) {
+                // Special rendering for PENDING group
+                html += '<div class="card" id="group-' + rb + '" style="margin-bottom: 8px; border-left: 6px solid #f59e0b; background: #fef3c7; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">' +
+                    '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1px; padding: 8px 12px;">' +
+                    '<h3 style="color: #f59e0b; margin: 0; display: flex; align-items: center; gap: 6px; font-size: 18px; font-weight: 700; font-family: \'SF Pro Display\', -apple-system, BlinkMacSystemFont, \'Inter\', sans-serif; letter-spacing: -0.3px; line-height: 1.1;">' +
+                    '<label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">' +
+                    '<input type="checkbox" ' + (allGroupSelected ? 'checked' : '') + ' onchange="toggleGroupSelection(\'' + rb + '\')" style="transform: scale(1.3);">' +
+                    '⚠️ Neklasificirani rezultati (' + groupItems.length + '):</label>' +
+                    '<button onclick="toggleGroup(\'' + groupId + '\')" style="background: none; border: none; cursor: pointer; font-size: 16px; color: #f59e0b; margin: 0 2px;" title="Skupi/Proširi grupu">' +
+                    (isCollapsed ? '▶️' : '🔽') + '</button></h3>' +
+                    '<div style="text-align: right; display: flex; flex-direction: column; gap: 2px;">' +
+                    '<div style="font-size: 13px; color: #92400e; font-family: inherit; line-height: 1.0; font-weight: 600;">🟢 ' + ourArticlesInGroup + ' naših • 💰 ' + withPricesInGroup + ' s cijenama</div>' +
+                    '<div style="font-size: 12px; color: #92400e; font-weight: 600; font-family: inherit; line-height: 1.0;">⚠️ Ne utječe na troškovnik</div>' +
+                    '<div style="display: flex; gap: 4px; align-items: center;">' +
+                    '<select id="pending-rb-select" style="padding: 2px 4px; font-size: 11px; border: 1px solid #f59e0b; border-radius: 4px;">' +
+                    '<option value="">Odaberite RB</option>';
+                    
+                // Add RB options from troškovnik
+                if (typeof window.troskovnik !== 'undefined' && window.troskovnik.length > 0) {
+                    window.troskovnik.forEach(item => {
+                        html += '<option value="' + item.redni_broj + '">RB ' + item.redni_broj + ': ' + (item.naziv ? item.naziv.substring(0, 20) : 'Bez naziva') + '...</option>';
+                    });
+                }
+                
+                html += '</select>' +
+                    '<button class="btn btn-warning" onclick="movePendingToRB()" style="padding: 2px 6px; font-size: 11px; font-family: inherit;" title="Premjesti odabrane u RB">🔄 Premjesti</button>' +
+                    '<button class="btn btn-danger" onclick="clearGroup(\'' + rb + '\')" style="padding: 2px 6px; font-size: 11px; font-family: inherit;" title="Obriši sve neklasificirane">🗑️</button>' +
+                    '</div></div></div>';
+            } else {
+                html += '<div class="card" id="group-' + rb + '" style="margin-bottom: 3px; border-left: 6px solid #7c3aed; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">' +
                 '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1px; padding: 6px 8px;">' +
                 '<h3 style="color: #7c3aed; margin: 0; display: flex; align-items: center; gap: 4px; font-size: 18px; font-weight: 700; font-family: \'SF Pro Display\', -apple-system, BlinkMacSystemFont, \'Inter\', sans-serif; letter-spacing: -0.3px; line-height: 1.1;">' +
                 '<label style="cursor: pointer; display: flex; align-items: center; gap: 2px;">' +
@@ -276,7 +326,11 @@ function updateResultsDisplay() {
                 '<div style="font-size: 11px; color: #6b7280; font-family: inherit; line-height: 1.0; font-weight: 500;">' + troskovnikQuantity + ' × €' + lowestPrice.toFixed(2) + '</div>' +
                 '<button class="btn btn-purple" onclick="clearGroup(' + rb + ')" style="padding: 1px 3px; font-size: 11px; font-family: inherit; line-height: 1.0;" title="Obriši cijelu grupu">🗑️</button>' +
                 '</div></div>' +
-                '<div id="' + groupId + '-content" style="display: ' + (isCollapsed ? 'none' : 'block') + ';">' +
+                '<div id="' + groupId + '-content" style="display: ' + (isCollapsed ? 'none' : 'block') + ';">';
+            }
+            
+            // Common content for both PENDING and numbered groups
+            html +=
                 '<div class="table-container"><table class="table" style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 16px; border-spacing: 0; border-collapse: separate; width: 100%;"><thead><tr style="background: #f8fafc;">' +
                 '<th style="width: 30px; padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9;">✓</th>' +
                 '<th style="width: 35px; padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9;">Rang</th>' +
@@ -450,14 +504,34 @@ function updateResultsDisplay() {
                         '<option value="5"' + (item.customPdvStopa === 5 ? ' selected' : '') + '>5%</option>' +
                         '</select></td>';
                 } else {
-                    // Our articles - show Auto with green theme
+                    // Our articles - show actual PDV percentage if available, otherwise Auto
+                    let pdvDisplay = 'Auto';
+                    let pdvValue = '-';
+                    
+                    // Try to get actual PDV percentage for Google Sheets articles
+                    if (item.pdvStopa && item.pdvStopa > 0) {
+                        pdvDisplay = item.pdvStopa + '%';
+                        pdvValue = item.pdvStopa + '%';
+                    } else if (item.code && typeof window.getArticleWeightAndPDV === 'function') {
+                        const pdvData = window.getArticleWeightAndPDV(item.code, item.name, item.unit, item.source);
+                        if (pdvData.pdvStopa > 0) {
+                            pdvDisplay = pdvData.pdvStopa + '%';
+                            pdvValue = pdvData.pdvStopa + '%';
+                        }
+                    }
+                    
                     html += '<td style="padding: 1px; text-align: center; vertical-align: middle;">' +
-                        '<div style="color: #16a34a; font-size: 13px; font-weight: 700; line-height: 0.9;">-</div>' +
-                        '<div style="font-size: 11px; color: #16a34a; line-height: 0.8;">Auto</div></td>';
+                        '<div style="color: #16a34a; font-size: 13px; font-weight: 700; line-height: 0.9;">' + pdvValue + '</div>' +
+                        '<div style="font-size: 11px; color: #16a34a; line-height: 0.8;">' + pdvDisplay + '</div></td>';
                 }
                 
                 html += '<td style="padding: 1px; font-size: 13px; text-align: center; line-height: 0.9; vertical-align: middle;">' + formattedDate + '</td>' +
-                    '<td style="padding: 1px; text-align: center; vertical-align: middle;"><span class="badge ' + getBadgeClass(item.source) + '" style="font-size: 12px; padding: 1px 2px; border-radius: 4px; line-height: 0.9; font-weight: 600;">' + (item.source || '') + '</span></td>' +
+                    '<td style="padding: 1px; text-align: center; vertical-align: middle;">' +
+                        '<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">' +
+                            '<span class="badge ' + getBadgeClass(item.source) + '" style="font-size: 10px; padding: 1px 4px; border-radius: 3px; font-weight: 600;">' + (isTrulyOurArticle(item.source, item.code) ? '🏠 NAŠ' : '📋 PO CJENIKU') + '</span>' +
+                            '<div style="font-size: 9px; color: #6b7280; font-weight: 500; line-height: 1;">' + parseSourceName(item.source) + '</div>' +
+                        '</div>' +
+                    '</td>' +
                     '<td style="padding: 1px; text-align: center; vertical-align: middle;"><button class="auto-btn" onclick="removeResult(\'' + resultKey + '\')" title="Ukloni rezultat" ' +
                     'style="background: #ef4444; color: white; border: none; padding: 1px 2px; border-radius: 3px; font-size: 12px; cursor: pointer; line-height: 0.9; font-weight: 600;">🗑️</button></td>' +
                     '</tr>';
@@ -578,6 +652,8 @@ function updateResultWeight(resultKey, newWeight) {
         const weight = parseFloat(newWeight) || 0;
         result.calculatedWeight = weight;
         result.weight = weight;
+        // Mark that user has manually modified the weight
+        result.hasUserWeight = true;
         
         if (result.hasUserPrice) {
             if (result.userPriceType === 'pricePerPiece') {
@@ -650,6 +726,16 @@ function removeResult(resultKey) {
                         troskovnikItem.izlazna_cijena = Math.round(troskovnikPrice * 100) / 100;
                         troskovnikItem.nabavna_cijena_1 = Math.round(secondArticle.pricePerKg * 100) / 100;
                         troskovnikItem.dobavljac_1 = secondArticle.supplier || '';
+                        
+                        // MISSING RUC/KG CALCULATION FIX: Calculate RUC per kilogram
+                        // Formula: ruc_per_kg = (izlazna_cijena - nabavna_cijena_1) / tezina
+                        const ruc = troskovnikItem.izlazna_cijena - troskovnikItem.nabavna_cijena_1;
+                        const weight = parseFloat(troskovnikItem.tezina) || 0;
+                        if (weight > 0) {
+                            troskovnikItem.ruc_per_kg = Math.round((ruc / weight) * 100) / 100; // Round to 2 decimal places
+                        } else {
+                            troskovnikItem.ruc_per_kg = 0;
+                        }
                     }
                 }
                 
@@ -809,6 +895,63 @@ function exportResults() {
     showMessage('success', 'Exportano ' + selectedItems.length + ' rezultata s VPC/kg u ' + filename);
 }
 
+/**
+ * Move PENDING results to selected RB
+ */
+function movePendingToRB() {
+    const selectElement = document.getElementById('pending-rb-select');
+    if (!selectElement || !selectElement.value) {
+        alert('Molimo odaberite RB za premještanje!');
+        return;
+    }
+    
+    const targetRB = parseInt(selectElement.value);
+    if (!targetRB || targetRB <= 0) {
+        alert('Neispravni RB!');
+        return;
+    }
+    
+    // Check if RB exists in troškovnik
+    const troskovnikItem = getTroskovnikItemForRB(targetRB);
+    if (!troskovnikItem) {
+        alert(`RB ${targetRB} ne postoji u troškovniku!`);
+        return;
+    }
+    
+    // Get selected PENDING results
+    const pendingResults = results.filter(r => r.rb === "PENDING");
+    const selectedPendingResults = pendingResults.filter(r => selectedResults.has(r.id + '-PENDING'));
+    
+    if (selectedPendingResults.length === 0) {
+        alert('Molimo odaberite rezultate za premještanje!');
+        return;
+    }
+    
+    // Move selected results to target RB
+    selectedPendingResults.forEach(result => {
+        // Remove from selectedResults with old key
+        selectedResults.delete(result.id + '-PENDING');
+        
+        // Update RB
+        result.rb = targetRB;
+        
+        // Add to selectedResults with new key
+        selectedResults.add(result.id + '-' + targetRB);
+    });
+    
+    // Reset dropdown
+    selectElement.value = '';
+    
+    // Refresh display
+    updateResultsDisplay();
+    
+    // Show success message
+    const message = `Premješteno ${selectedPendingResults.length} rezultata u RB ${targetRB}: ${troskovnikItem.naziv}`;
+    showMessage('success', message);
+    
+    console.log(`🔄 Moved ${selectedPendingResults.length} PENDING results to RB ${targetRB}`);
+}
+
 // Expose functions globally
 window.updateResultsDisplay = updateResultsDisplay;
 window.updateResultPrice = updateResultPrice;
@@ -831,6 +974,7 @@ window.calculateGroupPurchasingValue = calculateGroupPurchasingValue;
 window.calculateTotalPurchasingValue = calculateTotalPurchasingValue;
 window.isOurArticle = isOurArticle;
 window.validatePrice = validatePrice;
+window.movePendingToRB = movePendingToRB;
 
 // console.log('✅ FIXED Enhanced results module loaded:');
 // console.log('🎨 FIXED: All red colors changed to purple (#7c3aed)');

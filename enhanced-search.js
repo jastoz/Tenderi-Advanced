@@ -227,7 +227,7 @@ function searchArticles(articles, parsedQuery) {
                 // // console.log(`✅ Article ${article.name} (${weightInGrams}g) within range ${segment.rangeMin}-${segment.rangeMax}g`);
             }
 
-            const resultRb = segment.rb || 1;
+            const resultRb = segment.rb || "PENDING";
             const calculatedWeight = extractWeight(article.name, article.unit, article.code, article.source) || 0;
             const calculatedPricePerKg = calculatedWeight > 0 ? article.price / calculatedWeight : 0;
 
@@ -316,7 +316,7 @@ function performLiveSearch(query) {
         if (hasDirectCodeFromBrackets) {
             // SAMO pretraga baze težina za format s zagradama "22. (2232)"
             const directCode = parsedQuery.segments[0].directCode;
-            const targetRB = parsedQuery.segments[0].rb || 1;
+            const targetRB = parsedQuery.segments[0].rb || "PENDING";
             
             // console.log(`🔍 Direct code search (brackets only): ${directCode} for RB ${targetRB}`);
             
@@ -418,7 +418,7 @@ function showAutocomplete(results, inputElement) {
     const currentQuery = inputElement.value.trim();
     const parsedQuery = parseSearchQuery(currentQuery);
     const targetRB = (parsedQuery.segments.length > 0 && parsedQuery.segments[0].rb) ? 
-                     parsedQuery.segments[0].rb : 1;
+                     parsedQuery.segments[0].rb : "PENDING";
 
     // Check if range is active
     const hasRange = parsedQuery.segments.length > 0 && 
@@ -482,7 +482,12 @@ function showAutocomplete(results, inputElement) {
             <div style="padding: 12px 16px; border-bottom: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center;">
                 <div style="flex: 1;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
-                        <strong>${item.name}</strong>
+                        <div>
+                            <strong>${item.name}</strong>
+                            <div style="font-size: 11px; color: #6b7280; margin-top: 2px;">
+                                <span style="font-weight: 600;">Izvor:</span> ${parseSourceName(item.source)}
+                            </div>
+                        </div>
                         <div style="display: flex; gap: 8px; align-items: center;">
                             <span style="background: ${isOur ? '#059669' : '#fbbf24'}; color: white; padding: 3px 8px; border-radius: 6px; font-weight: bold; font-size: 12px;">${item.supplier}</span>
                             ${sourceBadge}
@@ -490,7 +495,7 @@ function showAutocomplete(results, inputElement) {
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px;">
-                        <span style="background: ${isOur ? '#059669' : '#7c3aed'}; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold;">€${formatDecimalHR(item.price)}</span>
+                        <span style="background: ${isHistoricalResult ? '#dc2626' : (isOur ? '#059669' : '#7c3aed')}; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${isHistoricalResult ? 'N/A' : '€' + formatDecimalHR(item.price)}</span>
                         <span style="background: #e0e7ff; color: #3730a3; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${item.unit}</span>
                         ${weight ? '<span style="' + weightColor + ' padding: 2px 6px; border-radius: 4px; font-weight: bold;">' + weightIcon + ' ' + weight + '</span>' : ''}
                         ${pricePerKg ? '<span style="background: #059669; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold;">' + pricePerKg + '</span>' : ''}
@@ -507,25 +512,25 @@ function showAutocomplete(results, inputElement) {
                         ${isManualEntry ? `
                             <div style="text-align: center;">
                                 <div style="font-size: 9px; color: #f59e0b; font-weight: bold; margin-bottom: 2px;">💰 Cijena</div>
-                                <input type="number" step="0.01" placeholder="€" id="price-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #f59e0b; border-radius: 6px; font-size: 11px; text-align: center; background: #fef3c7; color: #f59e0b; font-weight: bold;" onfocus="handlePriceFocus(this, 0)" onkeydown="handlePriceKeydown(event, '${item.id}', ${targetRB}, false)" title="Enter = Dodaj u troškovnik za ručni unos">
+                                <input type="number" step="0.01" placeholder="€" id="price-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #f59e0b; border-radius: 6px; font-size: 11px; text-align: center; background: #fef3c7; color: #f59e0b; font-weight: bold;" onfocus="handlePriceFocus(this, 0)" onkeydown="handlePriceKeydown(event, '${item.id}', '${targetRB}', false)" title="Enter = Dodaj u troškovnik za ručni unos">
                             </div>
                             <div style="text-align: center;">
                                 <div style="font-size: 9px; color: #f59e0b; font-weight: bold; margin-bottom: 2px;">⚖️ Težina</div>
-                                <input type="number" step="0.001" placeholder="kg" value="0.000" id="weight-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #f59e0b; border-radius: 6px; font-size: 11px; text-align: center; background: #fef3c7; color: #f59e0b; font-weight: bold;" onfocus="this.select()" onkeydown="handleWeightKeydown(event, '${item.id}', ${targetRB})" title="Unesite težinu">
+                                <input type="number" step="0.001" placeholder="kg" value="0.000" id="weight-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #f59e0b; border-radius: 6px; font-size: 11px; text-align: center; background: #fef3c7; color: #f59e0b; font-weight: bold;" onfocus="this.select()" onkeydown="handleWeightKeydown(event, '${item.id}', '${targetRB}')" title="Unesite težinu">
                             </div>
                         ` : isHistoricalResult ? `
                             <div style="text-align: center;">
                                 <div style="font-size: 9px; color: #64748b; font-weight: bold; margin-bottom: 2px;">💰 Cijena</div>
-                                <input type="number" step="0.01" placeholder="€" value="${item.price ? item.price.toFixed(2) : ''}" id="price-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #64748b; border-radius: 6px; font-size: 11px; text-align: center; background: #f8fafc; color: #64748b; font-weight: bold;" onfocus="handlePriceFocus(this, ${item.price || 0})" onkeydown="handlePriceKeydown(event, '${item.id}', ${targetRB}, false)" title="Prošlogodišnja cijena: €${item.price ? formatDecimalHR(item.price) : '0.00'} • Enter = Prvi izbor (troškovnik)">
+                                <input type="number" step="0.01" placeholder="€" value="${item.price ? item.price.toFixed(2) : ''}" id="price-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #64748b; border-radius: 6px; font-size: 11px; text-align: center; background: #f8fafc; color: #64748b; font-weight: bold;" onfocus="handlePriceFocus(this, ${item.price || 0})" onkeydown="handlePriceKeydown(event, '${item.id}', '${targetRB}', false)" title="Prošlogodišnja cijena: €${item.price ? formatDecimalHR(item.price) : '0.00'} • Enter = Prvi izbor (troškovnik)">
                             </div>
                             <div style="text-align: center;">
                                 <div style="font-size: 9px; color: #dc2626; font-weight: bold; margin-bottom: 2px;">⚖️ Težina</div>
-                                <input type="number" step="0.001" placeholder="kg" value="0.000" id="weight-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #dc2626; border-radius: 6px; font-size: 11px; text-align: center; background: #fef2f2; color: #dc2626; font-weight: bold;" onfocus="this.select()" onkeydown="handleWeightKeydown(event, '${item.id}', ${targetRB})" title="CRVENO: Unesi težinu jer prošlogodišnji artikli nemaju težinu u bazi">
+                                <input type="number" step="0.001" placeholder="kg" value="0.000" id="weight-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #dc2626; border-radius: 6px; font-size: 11px; text-align: center; background: #fef2f2; color: #dc2626; font-weight: bold;" onfocus="this.select()" onkeydown="handleWeightKeydown(event, '${item.id}', '${targetRB}')" title="CRVENO: Unesi težinu jer prošlogodišnji artikli nemaju težinu u bazi">
                             </div>
                         ` : isOur ? `
                             <div style="text-align: center;">
                                 <div style="font-size: 9px; color: #059669; font-weight: bold; margin-bottom: 2px;">💰 Cijena</div>
-                                <input type="number" step="0.01" placeholder="${lastYearPrice ? 'Lani €' + formatDecimalHR(lastYearPrice) : '€'}" id="price-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #059669; border-radius: 6px; font-size: 11px; text-align: center; background: #ecfdf5; color: #059669; font-weight: bold;" onfocus="handlePriceFocus(this, ${lastYearPrice || 0})" onkeydown="handlePriceKeydown(event, '${item.id}', ${targetRB}, ${isOur})" title="${lastYearPrice ? 'Lani: €' + formatDecimalHR(lastYearPrice) + ' • ' : ''}Enter = Prvi izbor (troškovnik), ✅ = Dodaj">
+                                <input type="number" step="0.01" placeholder="${lastYearPrice ? 'Lani €' + formatDecimalHR(lastYearPrice) : '€'}" id="price-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #059669; border-radius: 6px; font-size: 11px; text-align: center; background: #ecfdf5; color: #059669; font-weight: bold;" onfocus="handlePriceFocus(this, ${lastYearPrice || 0})" onkeydown="handlePriceKeydown(event, '${item.id}', '${targetRB}', ${isOur})" title="${lastYearPrice ? 'Lani: €' + formatDecimalHR(lastYearPrice) + ' • ' : ''}Enter = Prvi izbor (troškovnik), ✅ = Dodaj">
                             </div>
                             <div style="text-align: center;">
                                 <div style="font-size: 9px; color: ${isWeightFromDB ? '#059669' : '#dc2626'}; font-weight: bold; margin-bottom: 2px;">⚖️ Težina</div>
@@ -534,22 +539,22 @@ function showAutocomplete(results, inputElement) {
                         ` : `
                             <div style="text-align: center;">
                                 <div style="font-size: 9px; color: #7c3aed; font-weight: bold; margin-bottom: 2px;">💰 Cijena</div>
-                                <input type="number" step="0.01" placeholder="${lastYearPrice ? 'Lani €' + formatDecimalHR(lastYearPrice) : '€'}" id="price-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #7c3aed; border-radius: 4px; font-size: 11px; text-align: center; background: #f3f4f6; color: #7c3aed; font-weight: bold;" onfocus="handlePriceFocus(this, ${lastYearPrice || 0})" onkeydown="handlePriceKeydown(event, '${item.id}', ${targetRB}, ${isOur})" title="${lastYearPrice ? 'Lani: €' + formatDecimalHR(lastYearPrice) + ' • ' : ''}Enter = Prvi izbor (troškovnik), ✅ = Dodaj">
+                                <input type="number" step="0.01" placeholder="${lastYearPrice ? 'Lani €' + formatDecimalHR(lastYearPrice) : '€'}" id="price-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid #7c3aed; border-radius: 4px; font-size: 11px; text-align: center; background: #f3f4f6; color: #7c3aed; font-weight: bold;" onfocus="handlePriceFocus(this, ${lastYearPrice || 0})" onkeydown="handlePriceKeydown(event, '${item.id}', '${targetRB}', ${isOur})" title="${lastYearPrice ? 'Lani: €' + formatDecimalHR(lastYearPrice) + ' • ' : ''}Enter = Prvi izbor (troškovnik), ✅ = Dodaj">
                             </div>
                             <div style="text-align: center;">
                                 <div style="font-size: 9px; color: ${isWeightFromDB ? '#059669' : '#7c3aed'}; font-weight: bold; margin-bottom: 2px;">⚖️ Težina</div>
-                                <input type="number" step="0.001" placeholder="kg" value="${(item.calculatedWeight || 0).toFixed(3)}" id="weight-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid ${isWeightFromDB ? '#059669' : '#7c3aed'}; border-radius: 4px; font-size: 11px; text-align: center; background: ${isWeightFromDB ? '#ecfdf5' : '#f3f4f6'}; color: ${isWeightFromDB ? '#059669' : '#7c3aed'}; font-weight: bold;" onfocus="this.select()" onkeydown="handleWeightKeydown(event, '${item.id}', ${targetRB})" title="Enter = Prebaci na cijenu">
+                                <input type="number" step="0.001" placeholder="kg" value="${(item.calculatedWeight || 0).toFixed(3)}" id="weight-${item.id}-${targetRB}" style="width: 70px; padding: 4px 6px; border: 2px solid ${isWeightFromDB ? '#059669' : '#7c3aed'}; border-radius: 4px; font-size: 11px; text-align: center; background: ${isWeightFromDB ? '#ecfdf5' : '#f3f4f6'}; color: ${isWeightFromDB ? '#059669' : '#7c3aed'}; font-weight: bold;" onfocus="this.select()" onkeydown="handleWeightKeydown(event, '${item.id}', '${targetRB}')" title="Enter = Prebaci na cijenu">
                             </div>
                         `}
                         
                         ${isManualEntry ? `
-                            <button onclick="addWithoutPriceFromAutocomplete('${item.id}', ${targetRB})" style="background: #f59e0b; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;" title="Dodaj u troškovnik za ručni unos">✅ Dodaj</button>
+                            <button onclick="addWithoutPriceFromAutocomplete('${item.id}', '${targetRB}')" style="background: #f59e0b; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;" title="Dodaj u troškovnik za ručni unos">✅ Dodaj</button>
                         ` : isHistoricalResult ? `
-                            <button onclick="addWithPriceFromAutocomplete('${item.id}', ${targetRB}, false)" style="background: #64748b; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;" title="Prvi izbor - dodaj s cijenom u troškovnik">✅ Prvi</button>
-                            <button onclick="addWithoutPriceFromAutocomplete('${item.id}', ${targetRB})" style="background: #d1fae5; color: #059669; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;" title="Drugi izbor - dodaj bez cijene">✅ Drugi</button>
+                            <button onclick="addWithPriceFromAutocomplete('${item.id}', '${targetRB}', false)" style="background: #64748b; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;" title="Prvi izbor - dodaj s cijenom u troškovnik">✅ Prvi</button>
+                            <button onclick="addWithoutPriceFromAutocomplete('${item.id}', '${targetRB}')" style="background: #d1fae5; color: #059669; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;" title="Drugi izbor - dodaj bez cijene">✅ Drugi</button>
                         ` : `
-                            <button onclick="addWithPriceFromAutocomplete('${item.id}', ${targetRB}, ${isOur})" style="background: ${isOur ? '#059669' : '#7c3aed'}; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;" title="Prvi izbor - dodaj s cijenom">✅ Prvi</button>
-                            <button onclick="addWithoutPriceFromAutocomplete('${item.id}', ${targetRB})" style="background: #d1fae5; color: #059669; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;" title="Drugi izbor - dodaj bez cijene">✅ Drugi</button>
+                            <button onclick="addWithPriceFromAutocomplete('${item.id}', '${targetRB}', ${isOur})" style="background: ${isOur ? '#059669' : '#7c3aed'}; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;" title="Prvi izbor - dodaj s cijenom">✅ Prvi</button>
+                            <button onclick="addWithoutPriceFromAutocomplete('${item.id}', '${targetRB}')" style="background: #d1fae5; color: #059669; border: none; padding: 6px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer;" title="Drugi izbor - dodaj bez cijene">✅ Drugi</button>
                         `}
                     </div>
                 </div>
@@ -709,6 +714,15 @@ function handleWeightKeydown(event, articleId, targetRB) {
  * NEW: Add as first choice - goes to troškovnik (Izlazna + Nabavna 1 + Dobavljač 1)
  */
 function addAsFirstChoice(articleId, targetRB, isOurArticle) {
+    // IMPORTANT: Don't allow adding to troškovnik if RB is PENDING
+    if (targetRB === "PENDING") {
+        alert('Ne možete dodati u troškovnik bez rednog broja!\n\nRezultat će biti dodan u neklasificirane rezultate.\nNakon toga možete ga premjestiti u odgovarajući RB.');
+        
+        // Instead, add as additional choice (goes to results only)
+        addAsAdditionalChoice(articleId, targetRB, isOurArticle);
+        return;
+    }
+    
     const priceInput = document.getElementById(`price-${articleId}-${targetRB}`);
     const weightInput = document.getElementById(`weight-${articleId}-${targetRB}`);
 
@@ -731,19 +745,22 @@ function addAsFirstChoice(articleId, targetRB, isOurArticle) {
     priceInput.value = inputPrice.toFixed(2);
 
     let inputWeight = 0;
-    if (!isOurArticle) {
-        if (!weightInput || !weightInput.value || weightInput.value.trim() === '') {
-            alert('Molimo unesite težinu za vanjski artikl!');
-            if (weightInput) weightInput.focus();
-            return;
-        }
-        
+    
+    // Always try to get weight from input field first (for both our and external articles)
+    if (weightInput && weightInput.value && weightInput.value.trim() !== '') {
         inputWeight = parseFloat(weightInput.value.trim().replace(',', '.'));
         if (isNaN(inputWeight) || inputWeight <= 0) {
             alert('Neispravna težina!');
             weightInput.focus();
             return;
         }
+    }
+    
+    // For external articles, weight input is mandatory if no weight from input
+    if (!isOurArticle && inputWeight === 0) {
+        alert('Molimo unesite težinu za vanjski artikl!');
+        if (weightInput) weightInput.focus();
+        return;
     }
 
     console.log(`🔍 DEBUG addAsFirstChoice: Looking for articleId "${articleId}"`);
@@ -856,10 +873,17 @@ function addAsFirstChoice(articleId, targetRB, isOurArticle) {
         return;
     }
 
-    const troskovnikItem = getTroskovnikItemForRB(targetRB);
-    if (!troskovnikItem) {
-        alert(`Stavka RB ${targetRB} ne postoji u troškovniku!`);
-        return;
+    // PENDING CHECK: Skip troškovnik operations for PENDING RB
+    let troskovnikItem = null;
+    if (targetRB === "PENDING") {
+        console.log(`⚠️ PENDING article (first choice): Adding to results only, skipping troškovnik`);
+        // Continue with adding to results only, skip troškovnik operations
+    } else {
+        troskovnikItem = getTroskovnikItemForRB(targetRB);
+        if (!troskovnikItem) {
+            alert(`Stavka RB ${targetRB} ne postoji u troškovniku!`);
+            return;
+        }
     }
 
     // ENHANCED: Determine final weight with special handling for historical articles
@@ -874,16 +898,21 @@ function addAsFirstChoice(articleId, targetRB, isOurArticle) {
         isOurArticle = true; // Override for calculation purposes
         console.log(`📅✅ Historical article found in weight database: ${article.code} = ${finalWeight}kg`);
     } else if (isOurArticle) {
-        // For truly our articles, use weight from database or extraction
-        finalWeight = extractWeight(article.name, article.unit, article.code, article.source) || 
-                     article.calculatedWeight || article.weight || 1;
-        // // console.log(`✅ Our article weight: ${finalWeight}kg for ${article.code}`);
+        // For truly our articles, prioritize input weight if modified, otherwise use database/extraction
+        if (inputWeight > 0) {
+            finalWeight = inputWeight;
+            console.log(`🏠📝 Our article with manual weight: ${article.code} = ${finalWeight}kg`);
+        } else {
+            finalWeight = extractWeight(article.name, article.unit, article.code, article.source) || 
+                         article.calculatedWeight || article.weight || 1;
+            console.log(`🏠🔧 Our article with auto weight: ${article.code} = ${finalWeight}kg`);
+        }
     } else {
         // For external articles (including historical without weight database match)
         if (article.isHistorical) {
             // Historical article not in weight database - check if user entered weight
-            if (weightInput && weightInput.value && weightInput.value.trim() !== '' && parseFloat(weightInput.value.trim().replace(',', '.')) > 0) {
-                finalWeight = parseFloat(weightInput.value.trim().replace(',', '.'));
+            if (inputWeight > 0) {
+                finalWeight = inputWeight;
                 console.log(`📅📝 Historical article manual weight: ${article.code} = ${finalWeight}kg`);
             } else {
                 alert('Molimo unesite težinu za prošlogodišnji artikl koji nije u bazi težina!');
@@ -891,43 +920,63 @@ function addAsFirstChoice(articleId, targetRB, isOurArticle) {
                 return;
             }
         } else {
-            finalWeight = article.calculatedWeight || article.weight || inputWeight || 0;
+            // Priority: Use weight from input field if provided, otherwise fallback to calculated/stored weight
+            if (inputWeight > 0) {
+                finalWeight = inputWeight;
+                console.log(`📋📝 External article manual weight: ${article.code} = ${finalWeight}kg`);
+            } else {
+                finalWeight = article.calculatedWeight || article.weight || 0;
+                console.log(`📋🔧 External article auto weight: ${article.code} = ${finalWeight}kg`);
+            }
         }
-        // // console.log(`📝 External article weight: ${finalWeight}kg for ${article.code}`);
     }
 
-    // Calculate prices
-    const troskovnikWeight = troskovnikItem.tezina || 1;
+    // Calculate prices (needed for both troškovnik and results)
     const pricePerKg = inputPrice / finalWeight;
-    const troskovnikPrice = pricePerKg * troskovnikWeight;
     
-    // Calculate nabavna price (original VPC converted to troškovnik weight)
-    const originalPricePerKg = article.price / finalWeight;
-    const nabavnaPrice = originalPricePerKg * troskovnikWeight;
-
-    // UPDATE TROŠKOVNIK - FIRST CHOICE gets priority positions
-    // NOVA LOGIKA: Ako je težina troškovnik stavke = 0, ne preračunavaj cijenu
-    if (troskovnikItem.tezina === 0 || troskovnikItem.tezina <= 0) {
-        // Koristi originalnu cijenu iz tražilice bez preračunavanja
-        // Korisno za proizvode s kompleksnim pakiranjem (npr. "Čaj filter vrećice 40g")
-        troskovnikItem.izlazna_cijena = Math.round(inputPrice * 100) / 100;
-        troskovnikItem.nabavna_cijena_1 = Math.round(article.price * 100) / 100; // Originalna nabavna cijena
-    } else {
-        // Postojeća logika preračunavanja na osnovu težine
-        troskovnikItem.izlazna_cijena = Math.round(troskovnikPrice * 100) / 100;
-        troskovnikItem.nabavna_cijena_1 = Math.round(nabavnaPrice * 100) / 100;
-    }
-    troskovnikItem.dobavljac_1 = `${article.supplier} (${article.source})`;
-    
-    // Update najniza_cijena and marza
-    const prices = [troskovnikItem.nabavna_cijena_1, troskovnikItem.nabavna_cijena_2].filter(p => p > 0);
-    if (prices.length > 0) {
-        troskovnikItem.najniza_cijena = Math.min(...prices);
-        troskovnikItem.najniza_cijena = Math.round(troskovnikItem.najniza_cijena * 100) / 100;
+    // UPDATE TROŠKOVNIK - Only if not PENDING
+    if (troskovnikItem) {
+        const troskovnikWeight = troskovnikItem.tezina || 1;
+        const troskovnikPrice = pricePerKg * troskovnikWeight;
         
-        if (troskovnikItem.najniza_cijena > 0 && troskovnikItem.izlazna_cijena > 0) {
-            troskovnikItem.marza = ((troskovnikItem.izlazna_cijena - troskovnikItem.najniza_cijena) / troskovnikItem.najniza_cijena * 100);
-            troskovnikItem.marza = Math.round(troskovnikItem.marza * 10) / 10;
+        // Calculate nabavna price (original VPC converted to troškovnik weight)
+        const originalPricePerKg = article.price / finalWeight;
+        const nabavnaPrice = originalPricePerKg * troskovnikWeight;
+
+        // UPDATE TROŠKOVNIK - FIRST CHOICE gets priority positions
+        // NOVA LOGIKA: Ako je težina troškovnik stavke = 0, ne preračunavaj cijenu
+        if (troskovnikItem.tezina === 0 || troskovnikItem.tezina <= 0) {
+            // Koristi originalnu cijenu iz tražilice bez preračunavanja
+            // Korisno za proizvode s kompleksnim pakiranjem (npr. "Čaj filter vrećice 40g")
+            troskovnikItem.izlazna_cijena = Math.round(inputPrice * 100) / 100;
+            troskovnikItem.nabavna_cijena_1 = Math.round(article.price * 100) / 100; // Originalna nabavna cijena
+        } else {
+            // Postojeća logika preračunavanja na osnovu težine
+            troskovnikItem.izlazna_cijena = Math.round(troskovnikPrice * 100) / 100;
+            troskovnikItem.nabavna_cijena_1 = Math.round(nabavnaPrice * 100) / 100;
+        }
+        troskovnikItem.dobavljac_1 = `${article.supplier} (${article.source})`;
+        
+        // Update najniza_cijena and marza
+        const prices = [troskovnikItem.nabavna_cijena_1, troskovnikItem.nabavna_cijena_2].filter(p => p > 0);
+        if (prices.length > 0) {
+            troskovnikItem.najniza_cijena = Math.min(...prices);
+            troskovnikItem.najniza_cijena = Math.round(troskovnikItem.najniza_cijena * 100) / 100;
+            
+            if (troskovnikItem.najniza_cijena > 0 && troskovnikItem.izlazna_cijena > 0) {
+                troskovnikItem.marza = ((troskovnikItem.izlazna_cijena - troskovnikItem.najniza_cijena) / troskovnikItem.najniza_cijena * 100);
+                troskovnikItem.marza = Math.round(troskovnikItem.marza * 10) / 10;
+            }
+        }
+
+        // MISSING RUC/KG CALCULATION FIX: Calculate RUC per kilogram 
+        // Formula: ruc_per_kg = (izlazna_cijena - nabavna_cijena_1) / tezina
+        const ruc = troskovnikItem.izlazna_cijena - troskovnikItem.nabavna_cijena_1;
+        const weight = parseFloat(troskovnikItem.tezina) || 0;
+        if (weight > 0) {
+            troskovnikItem.ruc_per_kg = Math.round((ruc / weight) * 100) / 100; // Round to 2 decimal places
+        } else {
+            troskovnikItem.ruc_per_kg = 0;
         }
     }
 
@@ -942,6 +991,26 @@ function addAsFirstChoice(articleId, targetRB, isOurArticle) {
     console.log(`🔥 JEBENI DEBUG: Article isFromWeightDatabase:`, article.isFromWeightDatabase);
     console.log(`🔥 JEBENI DEBUG: Article source:`, article.source);
     console.log(`🔥 JEBENI DEBUG: Input price:`, inputPrice);
+
+    // CRITICAL PDV FIX: Get correct PDV stopa for "our articles"
+    let finalPdvStopa = article.pdvStopa || 0;
+    
+    if (isOurArticle && article.code && finalPdvStopa === 0) {
+        // Try to get PDV from weight/PDV database for our articles
+        if (typeof window.getArticleWeightAndPDV === 'function') {
+            const pdvData = window.getArticleWeightAndPDV(article.code, article.name, article.unit, article.source);
+            if (pdvData.pdvStopa > 0) {
+                finalPdvStopa = pdvData.pdvStopa;
+                console.log(`🎯 FIXED: Got PDV ${finalPdvStopa}% for our article ${article.code} from database`);
+            }
+        }
+        
+        // Alternative: Direct check in PDV database
+        if (finalPdvStopa === 0 && typeof window.pdvDatabase !== 'undefined' && window.pdvDatabase.has(article.code)) {
+            finalPdvStopa = window.pdvDatabase.get(article.code);
+            console.log(`🎯 FIXED: Got PDV ${finalPdvStopa}% for our article ${article.code} from PDV database`);
+        }
+    }
 
     // Add to results as "first choice"
     const resultItem = {
@@ -958,13 +1027,15 @@ function addAsFirstChoice(articleId, targetRB, isOurArticle) {
         isHistoricalWithWeight: isHistoricalWithWeight,
         // Override source for historical articles found in weight database
         source: isHistoricalWithWeight ? 'HISTORICAL_LAGER' : article.source,
-        // CRITICAL FIX: Preserve PDV stopa from weight database articles  
-        pdvStopa: article.pdvStopa || 0,
+        // CRITICAL FIX: Use correct PDV stopa (either from database or default)
+        pdvStopa: finalPdvStopa > 0 ? finalPdvStopa : (!isOurArticle ? 25 : 0),
         tarifniBroj: article.tarifniBroj || '',
-        // CRITICAL FIX: Set default customPdvStopa for external articles (25% default)
-        customPdvStopa: !isOurArticle && !article.pdvStopa ? 25 : (article.customPdvStopa || undefined),
+        // CRITICAL FIX: Set customPdvStopa for external articles
+        customPdvStopa: !isOurArticle ? (finalPdvStopa > 0 ? finalPdvStopa : 25) : undefined,
         // JEBENI FIX: FORCE preserve isFromWeightDatabase flag
-        isFromWeightDatabase: article.isFromWeightDatabase === true ? true : undefined
+        isFromWeightDatabase: article.isFromWeightDatabase === true ? true : undefined,
+        // NEW: Mark that user has manually entered/modified weight to prevent auto-overwrite
+        hasUserWeight: inputWeight > 0
     };
     
     console.log(`🔥 JEBENI DEBUG: Final resultItem:`, resultItem);
@@ -1008,12 +1079,17 @@ function addAsFirstChoice(articleId, targetRB, isOurArticle) {
     if (typeof updateResultsDisplay === 'function') updateResultsDisplay();
     if (typeof updateTroskovnikDisplay === 'function') updateTroskovnikDisplay();
 
-    const successMessage = `🥇 PRVI IZBOR: "${article.name}" postavljen u troškovnik RB ${targetRB}!\n\n` +
-                          `💰 IZLAZNA CIJENA: €${troskovnikItem.izlazna_cijena.toFixed(2)} (${troskovnikWeight.toFixed(3)}kg)\n` +
-                          `📦 NABAVNA 1: €${troskovnikItem.nabavna_cijena_1.toFixed(2)}\n` +
-                          `🏭 DOBAVLJAČ 1: ${troskovnikItem.dobavljac_1}\n` +
-                          `⚖️ TEŽINA: ${finalWeight.toFixed(3)}kg\n\n` +
-                          `✅ Zapisano u troškovnik kao glavni izbor!`;
+    const successMessage = troskovnikItem ? 
+        `🥇 PRVI IZBOR: "${article.name}" postavljen u troškovnik RB ${targetRB}!\n\n` +
+        `💰 IZLAZNA CIJENA: €${troskovnikItem.izlazna_cijena.toFixed(2)} (${(troskovnikItem.tezina || 1).toFixed(3)}kg)\n` +
+        `📦 NABAVNA 1: €${troskovnikItem.nabavna_cijena_1.toFixed(2)}\n` +
+        `🏭 DOBAVLJAČ 1: ${troskovnikItem.dobavljac_1}\n` +
+        `⚖️ TEŽINA: ${finalWeight.toFixed(3)}kg\n\n` +
+        `✅ Zapisano u troškovnik kao glavni izbor!` :
+        `📋 PENDING: "${article.name}" dodan u neklasificirane rezultate!\n\n` +
+        `💰 CIJENA: €${inputPrice.toFixed(2)}\n` +
+        `⚖️ TEŽINA: ${finalWeight.toFixed(3)}kg\n\n` +
+        `⚠️ Premjestite u odgovarajući RB iz sekcije Rezultati!`;
 
     if (typeof showMessage === 'function') {
         showMessage('success', successMessage);
@@ -1099,10 +1175,17 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
         return;
     }
 
-    const troskovnikItem = getTroskovnikItemForRB(targetRB);
-    if (!troskovnikItem) {
-        alert(`Stavka RB ${targetRB} ne postoji u troškovniku!`);
-        return;
+    // PENDING CHECK: Skip troškovnik operations for PENDING RB
+    let troskovnikItem = null;
+    if (targetRB === "PENDING") {
+        console.log(`⚠️ PENDING article (additional choice): Adding to results only, skipping troškovnik`);
+        // Continue with adding to results only, skip troškovnik operations
+    } else {
+        troskovnikItem = getTroskovnikItemForRB(targetRB);
+        if (!troskovnikItem) {
+            alert(`Stavka RB ${targetRB} ne postoji u troškovniku!`);
+            return;
+        }
     }
 
     // ENHANCED: Get weight with special handling for historical articles
@@ -1125,35 +1208,49 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
         // // console.log(`📝 External article weight (additional): ${finalWeight}kg for ${article.code}`);
     }
 
-    // Calculate nabavna price for troškovnik weight
-    const troskovnikWeight = troskovnikItem.tezina || 1;
-    const originalPricePerKg = article.price / finalWeight;
-    const nabavnaPrice = originalPricePerKg * troskovnikWeight;
+    // UPDATE TROŠKOVNIK - Only if not PENDING
+    let canUpdateTroskovnik = false;
+    if (troskovnikItem) {
+        // Calculate nabavna price for troškovnik weight
+        const troskovnikWeight = troskovnikItem.tezina || 1;
+        const originalPricePerKg = article.price / finalWeight;
+        const nabavnaPrice = originalPricePerKg * troskovnikWeight;
 
-    // Check if Nabavna 2 is free, otherwise just add to results
-    const canUpdateTroskovnik = !troskovnikItem.nabavna_cijena_2 || troskovnikItem.nabavna_cijena_2 === 0;
-    
-    if (canUpdateTroskovnik) {
-        // UPDATE TROŠKOVNIK - Second choice
-        // NOVA LOGIKA: Ako je težina troškovnik stavke = 0, ne preračunavaj cijenu
-        if (troskovnikItem.tezina === 0 || troskovnikItem.tezina <= 0) {
-            // Koristi originalnu cijenu iz tražilice bez preračunavanja
-            troskovnikItem.nabavna_cijena_2 = Math.round(article.price * 100) / 100;
-        } else {
-            // Postojeća logika preračunavanja na osnovu težine
-            troskovnikItem.nabavna_cijena_2 = Math.round(nabavnaPrice * 100) / 100;
-        }
-        troskovnikItem.dobavljac_2 = `${article.supplier} (${article.source})`;
+        // Check if Nabavna 2 is free, otherwise just add to results
+        canUpdateTroskovnik = !troskovnikItem.nabavna_cijena_2 || troskovnikItem.nabavna_cijena_2 === 0;
         
-        // Update najniza_cijena and marza
-        const prices = [troskovnikItem.nabavna_cijena_1, troskovnikItem.nabavna_cijena_2].filter(p => p > 0);
-        if (prices.length > 0) {
-            troskovnikItem.najniza_cijena = Math.min(...prices);
-            troskovnikItem.najniza_cijena = Math.round(troskovnikItem.najniza_cijena * 100) / 100;
+        if (canUpdateTroskovnik) {
+            // UPDATE TROŠKOVNIK - Second choice
+            // NOVA LOGIKA: Ako je težina troškovnik stavke = 0, ne preračunavaj cijenu
+            if (troskovnikItem.tezina === 0 || troskovnikItem.tezina <= 0) {
+                // Koristi originalnu cijenu iz tražilice bez preračunavanja
+                troskovnikItem.nabavna_cijena_2 = Math.round(article.price * 100) / 100;
+            } else {
+                // Postojeća logika preračunavanja na osnovu težine
+                troskovnikItem.nabavna_cijena_2 = Math.round(nabavnaPrice * 100) / 100;
+            }
+            troskovnikItem.dobavljac_2 = `${article.supplier} (${article.source})`;
             
-            if (troskovnikItem.najniza_cijena > 0 && troskovnikItem.izlazna_cijena > 0) {
-                troskovnikItem.marza = ((troskovnikItem.izlazna_cijena - troskovnikItem.najniza_cijena) / troskovnikItem.najniza_cijena * 100);
-                troskovnikItem.marza = Math.round(troskovnikItem.marza * 10) / 10;
+            // Update najniza_cijena and marza
+            const prices = [troskovnikItem.nabavna_cijena_1, troskovnikItem.nabavna_cijena_2].filter(p => p > 0);
+            if (prices.length > 0) {
+                troskovnikItem.najniza_cijena = Math.min(...prices);
+                troskovnikItem.najniza_cijena = Math.round(troskovnikItem.najniza_cijena * 100) / 100;
+                
+                if (troskovnikItem.najniza_cijena > 0 && troskovnikItem.izlazna_cijena > 0) {
+                    troskovnikItem.marza = ((troskovnikItem.izlazna_cijena - troskovnikItem.najniza_cijena) / troskovnikItem.najniza_cijena * 100);
+                    troskovnikItem.marza = Math.round(troskovnikItem.marza * 10) / 10;
+                }
+            }
+
+            // MISSING RUC/KG CALCULATION FIX: Calculate RUC per kilogram for additional choice
+            // Formula: ruc_per_kg = (izlazna_cijena - nabavna_cijena_1) / tezina
+            const ruc = troskovnikItem.izlazna_cijena - troskovnikItem.nabavna_cijena_1;
+            const weight = parseFloat(troskovnikItem.tezina) || 0;
+            if (weight > 0) {
+                troskovnikItem.ruc_per_kg = Math.round((ruc / weight) * 100) / 100; // Round to 2 decimal places
+            } else {
+                troskovnikItem.ruc_per_kg = 0;
             }
         }
     }
@@ -1173,6 +1270,26 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
     const shouldUseOutputPrice = isWeightDatabaseArticle && troskovnikItem && troskovnikItem.izlazna_cijena > 0;
     const finalUserPrice = shouldUseOutputPrice ? troskovnikItem.izlazna_cijena : 0;
     const hasValidUserPrice = shouldUseOutputPrice || false;
+
+    // CRITICAL PDV FIX: Get correct PDV stopa for "our articles" (same as in addAsFirstChoice)
+    let finalPdvStopa = article.pdvStopa || 0;
+    
+    if (isOurArticle && article.code && finalPdvStopa === 0) {
+        // Try to get PDV from weight/PDV database for our articles
+        if (typeof window.getArticleWeightAndPDV === 'function') {
+            const pdvData = window.getArticleWeightAndPDV(article.code, article.name, article.unit, article.source);
+            if (pdvData.pdvStopa > 0) {
+                finalPdvStopa = pdvData.pdvStopa;
+                console.log(`🎯 FIXED (addAdditional): Got PDV ${finalPdvStopa}% for our article ${article.code} from database`);
+            }
+        }
+        
+        // Alternative: Direct check in PDV database
+        if (finalPdvStopa === 0 && typeof window.pdvDatabase !== 'undefined' && window.pdvDatabase.has(article.code)) {
+            finalPdvStopa = window.pdvDatabase.get(article.code);
+            console.log(`🎯 FIXED (addAdditional): Got PDV ${finalPdvStopa}% for our article ${article.code} from PDV database`);
+        }
+    }
 
     // Add to results
     const resultItem = {
@@ -1194,11 +1311,11 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
         source: isHistoricalWithWeight ? 'HISTORICAL_LAGER' : article.source,
         // ENHANCED: Preserve Weight database flag
         isFromWeightDatabase: isWeightDatabaseArticle,
-        // CRITICAL FIX: Preserve PDV stopa from weight database articles
-        pdvStopa: article.pdvStopa || 0,
+        // CRITICAL FIX: Use correct PDV stopa (either from database or default)
+        pdvStopa: finalPdvStopa > 0 ? finalPdvStopa : (!isOurArticle ? 25 : 0),
         tarifniBroj: article.tarifniBroj || '',
-        // CRITICAL FIX: Set default customPdvStopa for external articles (25% default)
-        customPdvStopa: !isOurArticle && !article.pdvStopa ? 25 : (article.customPdvStopa || undefined)
+        // CRITICAL FIX: Set customPdvStopa for external articles
+        customPdvStopa: !isOurArticle ? (finalPdvStopa > 0 ? finalPdvStopa : 25) : undefined
     };
 
     results.push(resultItem);
@@ -1227,14 +1344,19 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
     if (typeof updateResultsDisplay === 'function') updateResultsDisplay();
     if (typeof updateTroskovnikDisplay === 'function') updateTroskovnikDisplay();
 
-    const position = canUpdateTroskovnik ? 'NABAVNA 2' : 'REZULTATIMA';
-    const successMessage = `🥈 DODATNI IZBOR: "${article.name}" dodan u ${position} RB ${targetRB}!\n\n` +
-                          (canUpdateTroskovnik ? 
-                            `📦 NABAVNA 2: €${troskovnikItem.nabavna_cijena_2.toFixed(2)}\n` +
-                            `🏭 DOBAVLJAČ 2: ${troskovnikItem.dobavljac_2}\n` :
-                            `📊 DODANO U REZULTATE: Nabavna 2 već zauzeta\n`) +
-                          `⚖️ TEŽINA: ${finalWeight.toFixed(3)}kg\n\n` +
-                          `✅ Dodan kao nabavna opcija!`;
+    const position = troskovnikItem ? (canUpdateTroskovnik ? 'NABAVNA 2' : 'REZULTATIMA') : 'PENDING';
+    const successMessage = troskovnikItem ?
+        `🥈 DODATNI IZBOR: "${article.name}" dodan u ${position} RB ${targetRB}!\n\n` +
+        (canUpdateTroskovnik ? 
+            `📦 NABAVNA 2: €${troskovnikItem.nabavna_cijena_2.toFixed(2)}\n` +
+            `🏭 DOBAVLJAČ 2: ${troskovnikItem.dobavljac_2}\n` :
+            `📊 DODANO U REZULTATE: Nabavna 2 već zauzeta\n`) +
+        `⚖️ TEŽINA: ${finalWeight.toFixed(3)}kg\n\n` +
+        `✅ Dodan kao nabavna opcija!` :
+        `📋 PENDING: "${article.name}" dodan u neklasificirane rezultate!\n\n` +
+        `💰 CIJENA: €${article.price.toFixed(2)}\n` +
+        `⚖️ TEŽINA: ${finalWeight.toFixed(3)}kg\n\n` +
+        `⚠️ Premjestite u odgovarajući RB iz sekcije Rezultati!`;
 
     if (typeof showMessage === 'function') {
         showMessage('success', successMessage);
@@ -1328,7 +1450,7 @@ function handleGlobalSearchKeypress(event) {
             const currentQuery = event.target.value.trim();
             const parsedQuery = parseSearchQuery(currentQuery);
             const targetRB = (parsedQuery.segments.length > 0 && parsedQuery.segments[0].rb) ? 
-                             parsedQuery.segments[0].rb : 1;
+                             parsedQuery.segments[0].rb : "PENDING";
             
             const ourArticles = autocompleteResults.filter(item => isTrulyOurArticle(item.source, item.code));
             if (ourArticles.length > 0) {
@@ -1424,7 +1546,7 @@ function performGlobalSearch() {
 
     try {
         const parsedQuery = parseSearchQuery(query);
-        let targetRB = 1;
+        let targetRB = "PENDING";
         if (parsedQuery.segments.length > 0 && parsedQuery.segments[0].rb) {
             targetRB = parsedQuery.segments[0].rb;
         }
@@ -1464,6 +1586,36 @@ function performGlobalSearch() {
             newItem.hasUserPrice = false;
             newItem.userPriceType = null;
             newItem.pricePerPiece = 0;
+            
+            // CRITICAL FIX: Assign PDV data for global search results
+            let finalPdvStopa = 0;
+            const isOurArticle = isTrulyOurArticle(newItem.source, newItem.code);
+            
+            if (isOurArticle && newItem.code) {
+                // Try to get PDV data using weight database function
+                if (typeof window.getArticleWeightAndPDV === 'function') {
+                    const pdvData = window.getArticleWeightAndPDV(newItem.code, newItem.name, newItem.unit, newItem.source);
+                    if (pdvData.pdvStopa > 0) {
+                        finalPdvStopa = pdvData.pdvStopa;
+                    }
+                }
+                
+                // Fallback: Try PDV database directly
+                if (finalPdvStopa === 0 && typeof window.pdvDatabase !== 'undefined' && window.pdvDatabase.has(newItem.code)) {
+                    finalPdvStopa = window.pdvDatabase.get(newItem.code);
+                }
+            }
+            
+            // Assign PDV data to result object
+            if (finalPdvStopa > 0) {
+                newItem.pdvStopa = finalPdvStopa;
+                if (!isOurArticle) {
+                    newItem.customPdvStopa = finalPdvStopa;
+                }
+            } else if (!isOurArticle) {
+                // Default 25% PDV for external articles
+                newItem.customPdvStopa = 25;
+            }
             
             results.push(newItem);
             addedCount++;
@@ -1590,6 +1742,23 @@ function searchProslogodisnjeCijene(query, parsedQuery) {
             const existsInWeightDb = typeof window.weightDatabase !== 'undefined' && 
                                    window.weightDatabase.has(item.sifra || '');
             
+            // CRITICAL FIX: Get PDV data for historical articles
+            let pdvStopa = 0;
+            if (existsInWeightDb && item.sifra) {
+                // Try to get PDV data from weight database
+                if (typeof window.getArticleWeightAndPDV === 'function') {
+                    const pdvData = window.getArticleWeightAndPDV(item.sifra, item.naziv, item.jm, 'HISTORICAL');
+                    if (pdvData.pdvStopa > 0) {
+                        pdvStopa = pdvData.pdvStopa;
+                    }
+                }
+                
+                // Fallback: Try PDV database directly
+                if (pdvStopa === 0 && typeof window.pdvDatabase !== 'undefined' && window.pdvDatabase.has(item.sifra)) {
+                    pdvStopa = window.pdvDatabase.get(item.sifra);
+                }
+            }
+            
             // Format as autocomplete result (compatible with existing structure)
             const formattedResult = {
                 id: `history_${index}`, // Unique ID with prefix
@@ -1605,7 +1774,10 @@ function searchProslogodisnjeCijene(query, parsedQuery) {
                 isHistorical: true, // Special flag for styling
                 isInWeightDatabase: existsInWeightDb, // NEW: Flag to indicate if in weight database
                 historicalYear: 'Prošla godina',
-                rb: targetRB // DODAJ RB za ispravno dodavanje u rezultate
+                rb: targetRB, // DODAJ RB za ispravno dodavanje u rezultate
+                // CRITICAL FIX: Include PDV data
+                pdvStopa: pdvStopa > 0 ? pdvStopa : 0,
+                customPdvStopa: !existsInWeightDb ? 25 : (pdvStopa > 0 ? pdvStopa : undefined)
             };
             
             results.push(formattedResult);
@@ -1882,7 +2054,7 @@ function showCustomArticleDialog(naziv, targetRB) {
             <button onclick="closeCustomArticleDialog()" style="padding: 8px 16px; border: 2px solid #e5e7eb; background: white; border-radius: 6px; cursor: pointer; font-size: 14px;">
                 Otkaži
             </button>
-            <button onclick="createCustomArticle(${targetRB})" style="padding: 8px 16px; border: none; background: #7c3aed; color: white; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;">
+            <button onclick="createCustomArticle('${targetRB}')" style="padding: 8px 16px; border: none; background: #7c3aed; color: white; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;">
                 Dodaj artikal
             </button>
         </div>
@@ -1976,9 +2148,10 @@ function createCustomArticle(targetRB) {
     }
     results.push(customArticle);
     
-    // Update troškovnik
-    const troskovnikItem = getTroskovnikItemForRB(targetRB);
-    if (troskovnikItem) {
+    // Update troškovnik - only if not PENDING
+    if (targetRB !== "PENDING") {
+        const troskovnikItem = getTroskovnikItemForRB(targetRB);
+        if (troskovnikItem) {
         const troskovnikWeight = troskovnikItem.tezina || 1;
         const troskovnikPrice = (price / weight) * troskovnikWeight;
         
@@ -1999,6 +2172,7 @@ function createCustomArticle(targetRB) {
         const prices = [troskovnikItem.nabavna_cijena_1, troskovnikItem.nabavna_cijena_2].filter(p => p > 0);
         if (prices.length > 0) {
             troskovnikItem.najniza_cijena = Math.min(...prices);
+        }
         }
     }
     
