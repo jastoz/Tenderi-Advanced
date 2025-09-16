@@ -1406,21 +1406,16 @@ function exportTroskovnikCSV() {
         if (correspondingResults.length > 0) {
             // Try each result until we find one with PDV data
             for (const result of correspondingResults) {
-                // CRITICAL FIX: Simplified PDV priority logic (same as Excel export)
+                // CORRECTED: Simple PDV lookup - check both properties (same as Excel)
                 let pdvValue = 0;
                 let pdvSource = '';
                 
-                // Priority 1: Manual entries (custom PDV)
-                if (result.isManualEntry && result.customPdvStopa && result.customPdvStopa > 0) {
+                // First check customPdvStopa (external articles, manual entries)
+                if (result.customPdvStopa && result.customPdvStopa > 0) {
                     pdvValue = result.customPdvStopa;
-                    pdvSource = 'manual entry';
+                    pdvSource = result.isManualEntry ? 'manual entry' : 'external article';
                 }
-                // Priority 2: External articles (custom PDV)  
-                else if (result.customPdvStopa && result.customPdvStopa > 0) {
-                    pdvValue = result.customPdvStopa;
-                    pdvSource = 'external custom';
-                }
-                // Priority 3: Google Sheets articles (direct PDV)
+                // Then check pdvStopa (Google Sheets articles)
                 else if (result.pdvStopa && result.pdvStopa > 0) {
                     pdvValue = result.pdvStopa;
                     pdvSource = 'Google Sheets';
@@ -1612,21 +1607,16 @@ function exportTroskovnikExcel() {
             for (const result of correspondingResults) {
                 console.log(`🔍 Excel checking result: ${result.name} (source: ${result.source}, code: ${result.code}, pdvStopa: ${result.pdvStopa}, customPdvStopa: ${result.customPdvStopa}, isManualEntry: ${result.isManualEntry})`);
                 
-                // CRITICAL FIX: Simplified PDV priority logic
+                // CORRECTED: Simple PDV lookup - check both properties
                 let pdvValue = 0;
                 let pdvSource = '';
                 
-                // Priority 1: Manual entries (custom PDV)
-                if (result.isManualEntry && result.customPdvStopa && result.customPdvStopa > 0) {
+                // First check customPdvStopa (external articles, manual entries)
+                if (result.customPdvStopa && result.customPdvStopa > 0) {
                     pdvValue = result.customPdvStopa;
-                    pdvSource = 'manual entry';
+                    pdvSource = result.isManualEntry ? 'manual entry' : 'external article';
                 }
-                // Priority 2: External articles (custom PDV)  
-                else if (result.customPdvStopa && result.customPdvStopa > 0) {
-                    pdvValue = result.customPdvStopa;
-                    pdvSource = 'external custom';
-                }
-                // Priority 3: Google Sheets articles (direct PDV)
+                // Then check pdvStopa (Google Sheets articles)
                 else if (result.pdvStopa && result.pdvStopa > 0) {
                     pdvValue = result.pdvStopa;
                     pdvSource = 'Google Sheets';
