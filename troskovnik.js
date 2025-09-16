@@ -1401,7 +1401,7 @@ function exportTroskovnikCSV() {
         let iznosPdv = '';
         
         // Find corresponding result item(s) for this troskovnik RB
-        const correspondingResults = results.filter(result => result.rb === item.redni_broj);
+        const correspondingResults = results.filter(result => result.rb == item.redni_broj);
         
         if (correspondingResults.length > 0) {
             // Try each result until we find one with PDV data
@@ -1500,7 +1500,7 @@ function exportTroskovnikCSV() {
     
     // ENHANCED: Show success message with PDV info including manual entries
     const itemsWithPdv = troskovnik.filter(item => {
-        const correspondingResults = results.filter(result => result.rb === item.redni_broj);
+        const correspondingResults = results.filter(result => result.rb == item.redni_broj);
         
         if (correspondingResults.length > 0) {
             for (const result of correspondingResults) {
@@ -1535,7 +1535,7 @@ function exportTroskovnikCSV() {
     
     // Count manual entries
     const manualEntries = troskovnik.filter(item => {
-        const correspondingResults = results.filter(result => result.rb === item.redni_broj);
+        const correspondingResults = results.filter(result => result.rb == item.redni_broj);
         return correspondingResults.some(result => result.isManualEntry);
     }).length;
     
@@ -1554,6 +1554,10 @@ function exportTroskovnikCSV() {
 }
 
 function exportTroskovnikExcel() {
+    console.log('🚀 STARTING EXCEL EXPORT');
+    console.log(`📊 Troskovnik has ${troskovnik?.length || 0} items`);
+    console.log(`📊 Results has ${results?.length || 0} items`);
+    
     if (!troskovnik || troskovnik.length === 0) {
         alert('Nema podataka za export!');
         return;
@@ -1582,22 +1586,26 @@ function exportTroskovnikExcel() {
         let iznosPdv = '';
         
         // Find corresponding result item(s) for this troskovnik RB
-        const correspondingResults = results.filter(result => result.rb === item.redni_broj);
+        const correspondingResults = results.filter(result => result.rb == item.redni_broj);
         
-        // DEBUG: Log RB matching for troubleshooting
-        if (item.redni_broj <= 3) { // Only log first 3 items to avoid spam
-            console.log(`🔍 DEBUG Excel RB matching for item ${item.redni_broj}:`);
-            console.log(`   - item.redni_broj: "${item.redni_broj}" (type: ${typeof item.redni_broj})`);
-            console.log(`   - Found ${correspondingResults.length} results with matching RB`);
+        // ENHANCED DEBUG: Always log PDV debugging for first 5 items
+        if (item.redni_broj <= 5) {
+            console.log(`🔍 EXCEL DEBUG for RB ${item.redni_broj}:`);
+            console.log(`   📋 Troskovnik item: "${item.naziv_artikla}"`);
+            console.log(`   📊 Found ${correspondingResults.length} results`);
             
             if (correspondingResults.length === 0) {
-                // Check if there are any results with similar RB values
-                const allRBs = results.map(r => r.rb).slice(0, 10); // First 10 for debugging
-                console.log(`   - Available RBs in results: [${allRBs.join(', ')}]`);
-                console.log(`   - RB types in results: [${allRBs.map(rb => typeof rb).join(', ')}]`);
+                const allRBs = results.map(r => r.rb).slice(0, 10);
+                console.log(`   ❌ NO RESULTS FOUND! Available RBs: [${allRBs.join(', ')}]`);
+                console.log(`   ❌ RB types: [${allRBs.map(rb => typeof rb).join(', ')}]`);
             } else {
                 correspondingResults.forEach((result, idx) => {
-                    console.log(`   - Result ${idx + 1}: RB="${result.rb}", source="${result.source}", code="${result.code}", pdvStopa=${result.pdvStopa}`);
+                    console.log(`   ✅ Result ${idx + 1}: "${result.name}"`);
+                    console.log(`      - RB: ${result.rb} (${typeof result.rb})`);
+                    console.log(`      - pdvStopa: ${result.pdvStopa} (${typeof result.pdvStopa})`);
+                    console.log(`      - customPdvStopa: ${result.customPdvStopa} (${typeof result.customPdvStopa})`);
+                    console.log(`      - isManualEntry: ${result.isManualEntry}`);
+                    console.log(`      - source: ${result.source}`);
                 });
             }
         }
@@ -1711,7 +1719,7 @@ function exportTroskovnikExcel() {
         // FIXED: Calculate PDV via results connection
         let pdvStopa = 0;
         
-        const correspondingResults = results.filter(result => result.rb === item.redni_broj);
+        const correspondingResults = results.filter(result => result.rb == item.redni_broj);
         
         if (correspondingResults.length > 0) {
             for (const result of correspondingResults) {
@@ -1795,7 +1803,7 @@ function exportTroskovnikExcel() {
     
     // ENHANCED: Show success message with PDV info including manual entries
     const itemsWithPdv = troskovnik.filter(item => {
-        const correspondingResults = results.filter(result => result.rb === item.redni_broj);
+        const correspondingResults = results.filter(result => result.rb == item.redni_broj);
         
         if (correspondingResults.length > 0) {
             for (const result of correspondingResults) {
@@ -1831,7 +1839,7 @@ function exportTroskovnikExcel() {
     
     // Count manual entries for Excel report
     const manualEntries = troskovnik.filter(item => {
-        const correspondingResults = results.filter(result => result.rb === item.redni_broj);
+        const correspondingResults = results.filter(result => result.rb == item.redni_broj);
         return correspondingResults.some(result => result.isManualEntry);
     }).length;
     
