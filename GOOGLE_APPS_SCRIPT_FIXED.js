@@ -7,8 +7,9 @@
  */
 
 const CONFIG = {
-  SPREADSHEET_ID: '1myNiHJdV6H8urM2jmCtY-yOgTZ0WsRheSe1i6YhIZdM', // UPDATE THIS TO YOUR SPREADSHEET ID
+  SPREADSHEET_ID: '1P72_--mz29K5SnSK5eFZIm53rmSVch94zrh1rbIA6QU', // 🆕 NEW: Tenderi app Google Sheet
   SHEET_NAME: 'artiklitezine',
+  KUPCI_SHEET_NAME: 'kupci', // 🆕 NEW: Customer sheet name
 
   COLUMNS: {
     SIFRA: 'A',
@@ -20,6 +21,12 @@ const CONFIG = {
     SIFRA_DOBAVLJACA: 'R',    // obj.sifra_dobavljaca
     TEZINA: 'V',
     GRUPA: 'AO'
+  },
+
+  // 🆕 NEW: Customer sheet columns
+  KUPCI_COLUMNS: {
+    SIFRA_KUPCA: 'A',        // Customer code
+    NAZIV_KUPCA: 'B'         // Customer name
   },
 
   FIRST_DATA_ROW: 2
@@ -46,9 +53,9 @@ function doGet(e) {
       case 'test':
         result = {
           status: 'ok',
-          message: 'Google Apps Script radi s ispravnim stupcima (E, M, AO) i proširenjem na R & V!',
-          version: '2.1',
-          features: ['getArticles', 'getGroupCriteria', 'updateWeight', 'updateWeights', 'updatePodgrupa', 'updateTarifniBroj', 'updateGrupa'],
+          message: 'Google Apps Script radi s ispravnim stupcima (E, M, AO) i proširenjem na R & V + kupci sheet!',
+          version: '2.2',
+          features: ['getArticles', 'getKupci', 'getGroupCriteria', 'updateWeight', 'updateWeights', 'updatePodgrupa', 'updateTarifniBroj', 'updateGrupa'],
           cors: 'enabled'
         };
         break;
@@ -59,6 +66,14 @@ function doGet(e) {
         result = { 
           success: true,
           articles: articles 
+        };
+        break;
+
+      case 'getKupci':
+        const kupci = getKupci();
+        result = { 
+          success: true,
+          kupci: kupci 
         };
         break;
 
@@ -458,6 +473,63 @@ function deleteGroupCriteria(params) {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  KUPCI (CUSTOMERS) FUNCTIONS - NEW                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Get customers from 'kupci' sheet
+ * Sheet format: Column A = Customer Code, Column B = Customer Name
+ */
+function getKupci(sheetName = CONFIG.KUPCI_SHEET_NAME) {
+  try {
+    const spreadsheet = SpreadsheetApp.openById(CONFIG.SPREADSHEET_ID);
+    const sheet = spreadsheet.getSheetByName(sheetName);
+    
+    // If kupci sheet doesn't exist, return empty array
+    if (!sheet) {
+      console.warn(`Sheet "${sheetName}" ne postoji - vraćam prazan niz kupaca`);
+      return [];
+    }
+
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    if (lastRow < CONFIG.FIRST_DATA_ROW) return [];
+
+    const values = sheet
+      .getRange(CONFIG.FIRST_DATA_ROW, 1, lastRow - CONFIG.FIRST_DATA_ROW + 1, Math.max(lastCol, 2))
+      .getValues();
+
+    const kupci = [];
+
+    values.forEach((row, idx) => {
+      const actualRow = idx + CONFIG.FIRST_DATA_ROW;
+      const sifraKupca = getCellValue(row, CONFIG.KUPCI_COLUMNS.SIFRA_KUPCA);
+      const nazivKupca = getCellValue(row, CONFIG.KUPCI_COLUMNS.NAZIV_KUPCA);
+
+      // Skip empty rows
+      if (!sifraKupca || !nazivKupca) return;
+
+      const kupac = {
+        id: actualRow,
+        sifra: String(sifraKupca).trim(),
+        naziv: String(nazivKupca).trim(),
+        searchText: (String(sifraKupca).trim() + ' ' + String(nazivKupca).trim()).toLowerCase()
+      };
+
+      kupci.push(kupac);
+    });
+
+    console.log(`✅ Učitano ${kupci.length} kupaca iz sheet-a "${sheetName}"`);
+    return kupci;
+    
+  } catch (error) {
+    console.error('getKupci error:', error);
+    // Instead of throwing, return empty array to prevent frontend crashes
+    return [];
+  }
+}
+
+/* -------------------------------------------------------------------------- */
 /*  TEST FUNCTION                                                            */
 /* -------------------------------------------------------------------------- */
 function runTests() {
@@ -466,6 +538,11 @@ function runTests() {
   try {
     const articles = getArticles();
     // console.log(`✅ Test passed: Found ${articles.length} articles`);
+    
+    // Test kupci functionality
+    const kupci = getKupci();
+    // console.log(`✅ Test passed: Found ${kupci.length} kupci`);
+    
     return true;
   } catch (error) {
     console.error(`❌ Test failed: ${error.toString()}`);

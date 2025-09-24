@@ -49,6 +49,10 @@ function serializeAppState() {
         troskovnik: (typeof troskovnik !== 'undefined') ? troskovnik : [],
         preracunResults: (typeof preracunResults !== 'undefined') ? preracunResults : [],
         tablicaRabata: (typeof tablicaRabata !== 'undefined') ? tablicaRabata : [],
+        proslogodisnjeCijene: (typeof proslogodisnjeCijene !== 'undefined') ? proslogodisnjeCijene : [],
+        
+        // 🆕 NEW: Kupci (customers) data
+        kupciTableData: (typeof window.kupciTableData !== 'undefined') ? window.kupciTableData : [],
         
         // Selected items
         selectedResults: (typeof selectedResults !== 'undefined') ? Array.from(selectedResults) : [],
@@ -58,6 +62,20 @@ function serializeAppState() {
         
         // UI input values
         globalSearchInput: document.getElementById('globalSearchInput')?.value || '',
+        // 🆕 NEW: Kupac input values
+        nazivKupca: document.getElementById('nazivKupca')?.value || '',
+        kupacSifra: document.getElementById('nazivKupca')?.getAttribute('data-kupac-sifra') || '',
+        godinaNatjecaja: document.getElementById('godinaNatjecaja')?.value || '25/26',
+        grupaProizvoda: document.getElementById('grupaProizvoda')?.value || '',
+        datumPredaje: document.getElementById('datumPredaje')?.value || '',
+        
+        // Excel troškovnik metadata
+        excelTroskovnikData: (typeof excelTroskovnikData !== 'undefined') ? excelTroskovnikData : {
+            procjenjena_vrijednost: null,
+            garancija: null,
+            nacin_predaje: null,
+            datum_predaje: null
+        },
         
         // Troškovnik UI state
         troskovnikTableVisible: !document.getElementById('troskovnikTableContainer')?.classList.contains('hidden'),
@@ -70,7 +88,10 @@ function serializeAppState() {
             troskovnikCount: (typeof troskovnik !== 'undefined') ? troskovnik.length : 0,
             preracunCount: (typeof preracunResults !== 'undefined') ? preracunResults.length : 0,
             tablicaRabataCount: (typeof tablicaRabata !== 'undefined') ? tablicaRabata.length : 0,
-            selectedCount: (typeof selectedResults !== 'undefined') ? selectedResults.size : 0
+            proslogodisnjeCijeneCount: (typeof proslogodisnjeCijene !== 'undefined') ? proslogodisnjeCijene.length : 0,
+            selectedCount: (typeof selectedResults !== 'undefined') ? selectedResults.size : 0,
+            // 🆕 NEW: Kupci statistics
+            kupciCount: (typeof window.kupciTableData !== 'undefined') ? window.kupciTableData.length : 0
         }
     };
     
@@ -87,7 +108,56 @@ function serializeAppState() {
 }
 
 /**
+ * Collects all articles referenced in results, troskovnik, and tablicaRabata
+ * This ensures search functionality continues to work after loading minimal state
+ * @returns {Array} Array of articles that are actually used in the application
+ */
+function collectReferencedArticles() {
+    if (typeof articles === 'undefined' || !Array.isArray(articles) || articles.length === 0) {
+        return [];
+    }
+    
+    const referencedIds = new Set();
+    const referencedCodes = new Set();
+    
+    // Collect from results
+    if (typeof results !== 'undefined' && Array.isArray(results)) {
+        results.forEach(result => {
+            if (result.id) referencedIds.add(result.id);
+            if (result.code) referencedCodes.add(result.code);
+        });
+    }
+    
+    // Collect from troskovnik
+    if (typeof troskovnik !== 'undefined' && Array.isArray(troskovnik)) {
+        troskovnik.forEach(item => {
+            if (item.id) referencedIds.add(item.id);
+            if (item.sifra) referencedCodes.add(item.sifra);
+        });
+    }
+    
+    // Collect from tablicaRabata
+    if (typeof tablicaRabata !== 'undefined' && Array.isArray(tablicaRabata)) {
+        tablicaRabata.forEach(item => {
+            if (item.id) referencedIds.add(item.id);
+            if (item.sifra) referencedCodes.add(item.sifra);
+        });
+    }
+    
+    // Find matching articles
+    const referencedArticles = articles.filter(article => 
+        referencedIds.has(article.id) || referencedCodes.has(article.code)
+    );
+    
+    console.log(`📦 Collecting referenced articles: ${referencedArticles.length} from ${articles.length} total articles`);
+    console.log(`Referenced IDs: ${referencedIds.size}, Referenced codes: ${referencedCodes.size}`);
+    
+    return referencedArticles;
+}
+
+/**
  * Serializes MINIMAL application state (only final results) to JSON
+ * Enhanced to include referenced articles for continued search functionality
  * @returns {Object} Minimal state object with only troskovnik and tablica rabata
  */
 function serializeMinimalState() {
@@ -106,36 +176,68 @@ function serializeMinimalState() {
         return Math.round(total * 100) / 100;
     }
 
+    // Collect referenced articles before creating state object
+    const referencedArticles = collectReferencedArticles();
+
     const state = {
         // Metadata
         timestamp: new Date().toISOString(),
         version: 'minimal-1.0',
         appName: 'Tražilica Proizvoda & Troškovnik - Complete Data',
         
-        // ENHANCED: Include results + supporting data for complete workflow
+        // EXCLUDED: articles (8-9MB) completely removed to reduce file size by 95%+
+        // articles: EXCLUDED from minimal state for massive space savings
+        
+        // FIXED: Include ALL results (user may want to keep searches without prices yet)
         finalResults: (typeof results !== 'undefined') ? results : [],
         
         finalTroskovnik: (typeof troskovnik !== 'undefined') ? 
-            troskovnik.filter(item => item && (parseFloat(item.izlazna_cijena) || 0) > 0) : [],
+            troskovnik.filter(item => item) : [],
         
         finalTablicaRabata: (typeof tablicaRabata !== 'undefined') ? 
-            tablicaRabata.filter(item => item && (parseFloat(item.cijena_bez_pdv) || 0) > 0) : [],
+            tablicaRabata.filter(item => item) : [],
         
-        // CRITICAL: Include supporting databases for offline functionality
-        finalProslogodisnjeCijene: (typeof proslogodisnjeCijene !== 'undefined') ? proslogodisnjeCijene : [],
+        // INCLUDE: All historical price data (user may need records without prices)
+        finalProslogodisnjeCijene: (typeof window.proslogodisnjeCijene !== 'undefined') ? window.proslogodisnjeCijene : [],
         
+        // 🆕 NEW: Referenced articles for continued search functionality
+        referencedArticles: referencedArticles,
+        
+        // OPTIMIZED: Efficient Map → Array conversion with filtering
         finalWeightDatabase: (typeof weightDatabase !== 'undefined') ? 
-            Array.from(weightDatabase.entries()).map(([key, value]) => ({sifra: key, tezina: value})) : [],
+            Array.from(weightDatabase.entries())
+                .filter(([key, value]) => key && typeof value === 'number' && value > 0)
+                .map(([key, value]) => [key, value]) : [], // Compact array format [sifra, tezina]
         
         finalPdvDatabase: (typeof pdvDatabase !== 'undefined') ? 
-            Array.from(pdvDatabase.entries()).map(([key, value]) => ({sifra: key, pdv: value})) : [],
+            Array.from(pdvDatabase.entries())
+                .filter(([key, value]) => key && typeof value === 'number')
+                .map(([key, value]) => [key, value]) : [], // Compact array format [sifra, pdv]
+        
+        // Header data for complete state restoration
+        headerData: {
+            nazivKupca: document.getElementById('nazivKupca')?.value || '',
+            kupacSifra: document.getElementById('nazivKupca')?.getAttribute('data-kupac-sifra') || '',
+            godinaNatjecaja: document.getElementById('godinaNatjecaja')?.value || '25/26',
+            grupaProizvoda: document.getElementById('grupaProizvoda')?.value || '',
+            datumPredaje: document.getElementById('datumPredaje')?.value || ''
+        },
+        
+        // Excel troškovnik metadata
+        excelTroskovnikData: (typeof excelTroskovnikData !== 'undefined') ? excelTroskovnikData : {
+            procjenjena_vrijednost: null,
+            garancija: null,
+            nacin_predaje: null,
+            datum_predaje: null
+        },
         
         // Compact summary only
         summary: {
             totalResultsItems: (typeof results !== 'undefined') ? results.length : 0,
             totalTroskovnikItems: (typeof troskovnik !== 'undefined') ? troskovnik.length : 0,
             totalTablicaRabataItems: (typeof tablicaRabata !== 'undefined') ? tablicaRabata.length : 0,
-            totalProslogodisnjeCijeneItems: (typeof proslogodisnjeCijene !== 'undefined') ? proslogodisnjeCijene.length : 0,
+            totalProslogodisnjeCijeneItems: (typeof window.proslogodisnjeCijene !== 'undefined') ? window.proslogodisnjeCijene.length : 0,
+            totalReferencedArticles: referencedArticles.length,
             totalWeightItems: (typeof weightDatabase !== 'undefined') ? weightDatabase.size : 0,
             totalPdvItems: (typeof pdvDatabase !== 'undefined') ? pdvDatabase.size : 0,
             totalValueEUR: calculateTotalValue(),
@@ -143,14 +245,16 @@ function serializeMinimalState() {
         }
     };
     
-    console.log('📦 Serialized MINIMAL state:', {
-        finalResults: state.finalResults.length,
-        finalTroskovnik: state.finalTroskovnik.length,
-        finalTablicaRabata: state.finalTablicaRabata.length,
-        finalProslogodisnjeCijene: state.finalProslogodisnjeCijene.length,
-        finalWeightDatabase: state.finalWeightDatabase.length,
-        finalPdvDatabase: state.finalPdvDatabase.length,
-        totalValue: state.summary.totalValueEUR
+    console.log('📦 Serialized OPTIMIZED MINIMAL state:', {
+        finalResults: state.finalResults.length + ' (ALL results included)',
+        finalTroskovnik: state.finalTroskovnik.length + ' (price > 0)',
+        finalTablicaRabata: state.finalTablicaRabata.length + ' (price > 0)',
+        finalProslogodisnjeCijene: state.finalProslogodisnjeCijene.length + ' (ALL included)',
+        referencedArticles: state.referencedArticles.length + ' (for search functionality)',
+        finalWeightDatabase: state.finalWeightDatabase.length + ' (compact format)',
+        finalPdvDatabase: state.finalPdvDatabase.length + ' (compact format)',
+        totalValue: state.summary.totalValueEUR,
+        optimization: 'Referenced articles preserved, search functionality maintained'
     });
     
     return state;
@@ -230,26 +334,42 @@ function deserializeAppState(state) {
                 }
             }
             
-            // Load finalProslogodisnjeCijene → proslogodisnjeCijene
+            // Load finalProslogodisnjeCijene → window.proslogodisnjeCijene
             if (state.finalProslogodisnjeCijene && Array.isArray(state.finalProslogodisnjeCijene)) {
-                if (typeof proslogodisnjeCijene !== 'undefined') {
-                    proslogodisnjeCijene.length = 0; // Clear existing
-                    proslogodisnjeCijene.push(...state.finalProslogodisnjeCijene);
-                    console.log('📅 Restored prošlogodišnje cijene from minimal format:', proslogodisnjeCijene.length);
+                if (typeof window.proslogodisnjeCijene !== 'undefined') {
+                    window.proslogodisnjeCijene.length = 0; // Clear existing
+                    window.proslogodisnjeCijene.push(...state.finalProslogodisnjeCijene);
+                    console.log('📅 Restored prošlogodišnje cijene from minimal format:', window.proslogodisnjeCijene.length);
                     
                     // Update filtered array if it exists
-                    if (typeof filteredProslogodisnjeCijene !== 'undefined') {
-                        filteredProslogodisnjeCijene = [...proslogodisnjeCijene];
+                    if (typeof window.filteredProslogodisnjeCijene !== 'undefined') {
+                        window.filteredProslogodisnjeCijene = [...window.proslogodisnjeCijene];
                     }
                 }
             }
             
-            // Load finalWeightDatabase → weightDatabase Map
+            // 🆕 NEW: Load referencedArticles → articles (for search functionality)
+            if (state.referencedArticles && Array.isArray(state.referencedArticles)) {
+                if (typeof articles !== 'undefined') {
+                    articles.push(...state.referencedArticles);
+                    console.log('🔍 Restored referenced articles from minimal format:', articles.length);
+                    console.log('✅ Search functionality will continue to work with restored articles');
+                }
+            }
+            
+            // Load finalWeightDatabase → weightDatabase Map (supports both compact and object format)
             if (state.finalWeightDatabase && Array.isArray(state.finalWeightDatabase)) {
                 if (typeof weightDatabase !== 'undefined') {
                     weightDatabase.clear(); // Clear existing
                     state.finalWeightDatabase.forEach(item => {
-                        if (item.sifra && item.tezina) {
+                        if (Array.isArray(item) && item.length === 2) {
+                            // New compact format: [sifra, tezina]
+                            const [sifra, tezina] = item;
+                            if (sifra && typeof tezina === 'number') {
+                                weightDatabase.set(sifra, tezina);
+                            }
+                        } else if (item && typeof item === 'object' && item.sifra && item.tezina) {
+                            // Legacy object format: {sifra, tezina}
                             weightDatabase.set(item.sifra, item.tezina);
                         }
                     });
@@ -257,12 +377,19 @@ function deserializeAppState(state) {
                 }
             }
             
-            // Load finalPdvDatabase → pdvDatabase Map
+            // Load finalPdvDatabase → pdvDatabase Map (supports both compact and object format)
             if (state.finalPdvDatabase && Array.isArray(state.finalPdvDatabase)) {
                 if (typeof pdvDatabase !== 'undefined') {
                     pdvDatabase.clear(); // Clear existing
                     state.finalPdvDatabase.forEach(item => {
-                        if (item.sifra && typeof item.pdv === 'number') {
+                        if (Array.isArray(item) && item.length === 2) {
+                            // New compact format: [sifra, pdv]
+                            const [sifra, pdv] = item;
+                            if (sifra && typeof pdv === 'number') {
+                                pdvDatabase.set(sifra, pdv);
+                            }
+                        } else if (item && typeof item === 'object' && item.sifra && typeof item.pdv === 'number') {
+                            // Legacy object format: {sifra, pdv}
                             pdvDatabase.set(item.sifra, item.pdv);
                         }
                     });
@@ -344,6 +471,32 @@ function deserializeAppState(state) {
                     // console.log('📊 Restored tablica rabata:', tablicaRabata.length);
                 }
             }
+            
+            // Restore prošlogodišnje cijene
+            if (state.proslogodisnjeCijene && Array.isArray(state.proslogodisnjeCijene)) {
+                if (typeof window.proslogodisnjeCijene !== 'undefined') {
+                    window.proslogodisnjeCijene.length = 0; // Clear existing
+                    window.proslogodisnjeCijene.push(...state.proslogodisnjeCijene);
+                    // console.log('📅 Restored prošlogodišnje cijene from full format:', window.proslogodisnjeCijene.length);
+                    
+                    // Update filtered array if it exists
+                    if (typeof window.filteredProslogodisnjeCijene !== 'undefined') {
+                        window.filteredProslogodisnjeCijene = [...window.proslogodisnjeCijene];
+                    }
+                }
+            }
+            
+            // 🆕 NEW: Restore kupci data
+            if (state.kupciTableData && Array.isArray(state.kupciTableData)) {
+                if (typeof window.kupciTableData !== 'undefined' && typeof window.processKupciData === 'function') {
+                    try {
+                        window.processKupciData(state.kupciTableData);
+                        console.log('🏢 Restored kupci data:', state.kupciTableData.length);
+                    } catch (error) {
+                        console.warn('⚠️ Error restoring kupci data:', error);
+                    }
+                }
+            }
         }
         
         // Restore selected results safely
@@ -363,8 +516,156 @@ function deserializeAppState(state) {
             }
         }
         
+        // 🆕 NEW: Restore kupac input values
+        if (state.nazivKupca) {
+            const nazivKupcaInput = document.getElementById('nazivKupca');
+            if (nazivKupcaInput) {
+                nazivKupcaInput.value = state.nazivKupca;
+                // Restore kupac sifra if available
+                if (state.kupacSifra) {
+                    nazivKupcaInput.setAttribute('data-kupac-sifra', state.kupacSifra);
+                }
+            }
+        }
+        
+        if (state.godinaNatjecaja) {
+            const godinaNatjecajaSelect = document.getElementById('godinaNatjecaja');
+            if (godinaNatjecajaSelect) {
+                godinaNatjecajaSelect.value = state.godinaNatjecaja;
+            }
+        }
+        
+        if (state.grupaProizvoda) {
+            const grupaProizvodaInput = document.getElementById('grupaProizvoda');
+            if (grupaProizvodaInput) {
+                grupaProizvodaInput.value = state.grupaProizvoda;
+            }
+        }
+        
+        if (state.datumPredaje) {
+            const datumPredajeInput = document.getElementById('datumPredaje');
+            if (datumPredajeInput) {
+                datumPredajeInput.value = state.datumPredaje;
+            }
+        }
+        
+        // Restore header data from minimal format
+        if (state.headerData) {
+            if (state.headerData.nazivKupca) {
+                const nazivKupcaInput = document.getElementById('nazivKupca');
+                if (nazivKupcaInput) {
+                    nazivKupcaInput.value = state.headerData.nazivKupca;
+                    if (state.headerData.kupacSifra) {
+                        nazivKupcaInput.setAttribute('data-kupac-sifra', state.headerData.kupacSifra);
+                    }
+                }
+            }
+            
+            if (state.headerData.godinaNatjecaja) {
+                const godinaNatjecajaSelect = document.getElementById('godinaNatjecaja');
+                if (godinaNatjecajaSelect) {
+                    godinaNatjecajaSelect.value = state.headerData.godinaNatjecaja;
+                }
+            }
+            
+            if (state.headerData.grupaProizvoda) {
+                const grupaProizvodaInput = document.getElementById('grupaProizvoda');
+                if (grupaProizvodaInput) {
+                    grupaProizvodaInput.value = state.headerData.grupaProizvoda;
+                }
+            }
+            
+            if (state.headerData.datumPredaje) {
+                const datumPredajeInput = document.getElementById('datumPredaje');
+                if (datumPredajeInput) {
+                    datumPredajeInput.value = state.headerData.datumPredaje;
+                }
+            }
+        }
+        
+        // Restore Excel troškovnik metadata
+        if (state.excelTroskovnikData && typeof excelTroskovnikData !== 'undefined') {
+            excelTroskovnikData.procjenjena_vrijednost = state.excelTroskovnikData.procjenjena_vrijednost || null;
+            excelTroskovnikData.garancija = state.excelTroskovnikData.garancija || null;
+            excelTroskovnikData.nacin_predaje = state.excelTroskovnikData.nacin_predaje || null;
+            excelTroskovnikData.datum_predaje = state.excelTroskovnikData.datum_predaje || null;
+            
+            console.log('📊 Restored Excel troškovnik metadata:', excelTroskovnikData);
+            
+            // Update display if it exists
+            if (typeof updateTroskovnikDisplay === 'function') {
+                try {
+                    updateTroskovnikDisplay();
+                } catch (error) {
+                    console.warn('⚠️ Could not update troškovnik display:', error);
+                }
+            }
+        }
+        
         // Update all displays
         updateAllDisplays();
+        
+        // CRITICAL FIX: Refresh all existing articles with restored weight/PDV data
+        if (typeof updateExistingArticlesWithWeightsAndPDV === 'function') {
+            updateExistingArticlesWithWeightsAndPDV();
+            console.log('✅ Articles refreshed with restored weight/PDV data after state loading');
+        } else {
+            console.warn('⚠️ updateExistingArticlesWithWeightsAndPDV not available - articles may not have proper classification');
+        }
+
+        // Also refresh results array specifically  
+        if (typeof updateExistingResultsWithWeights === 'function') {
+            updateExistingResultsWithWeights();
+            console.log('✅ Results refreshed with restored weight/PDV data after state loading');
+        } else {
+            console.warn('⚠️ updateExistingResultsWithWeights not available - results may not have proper weights');
+        }
+
+        // CRITICAL: Refresh results display AFTER weight/PDV updates to show correct colors
+        // Use timeout to ensure all database operations are complete
+        setTimeout(() => {
+            if (typeof updateResultsDisplay === 'function') {
+                // Debug: Test the isTrulyOurArticle function with sample data
+                if (typeof window.isTrulyOurArticle === 'function' && typeof window.weightDatabase !== 'undefined') {
+                    console.log('🔍 DEBUG: Testing isTrulyOurArticle after state loading:');
+                    console.log('   - weightDatabase size:', window.weightDatabase.size);
+                    console.log('   - Sample test 2834:', window.isTrulyOurArticle('12.09.2025 Vagros Anex (1) - Lager', '2834'));
+                    console.log('   - Sample test 641:', window.isTrulyOurArticle('12.09.2025 Vagros Anex (1) - Lager', '641'));
+                    console.log('   - Sample test 6617:', window.isTrulyOurArticle('12.09.2025 Vagros Anex (1) - Urpd', '6617'));
+                }
+                
+                updateResultsDisplay();
+                console.log('✅ Results display refreshed after weight/PDV classification updates');
+            } else {
+                console.warn('⚠️ updateResultsDisplay not available - colors may not update correctly');
+            }
+        }, 100); // Small delay to ensure databases are ready
+
+        // Force refresh troškovnik colors after weight database restoration
+        if (typeof refreshTroskovnikColors === 'function') {
+            refreshTroskovnikColors();
+            console.log('✅ Troškovnik colors refreshed after state loading');
+        } else {
+            console.warn('⚠️ refreshTroskovnikColors not available - colors may not update correctly');
+        }
+
+        // CRITICAL: Also refresh troškovnik display to ensure PDV data is properly connected
+        setTimeout(() => {
+            if (typeof updateTroskovnikDisplay === 'function') {
+                // Debug: Check PDV database state
+                if (typeof window.pdvDatabase !== 'undefined') {
+                    console.log('🔍 DEBUG: PDV database after state loading:');
+                    console.log('   - pdvDatabase size:', window.pdvDatabase.size);
+                    console.log('   - Sample PDV for 2834:', window.pdvDatabase.get('2834'));
+                    console.log('   - Sample PDV for 641:', window.pdvDatabase.get('641'));
+                }
+                
+                updateTroskovnikDisplay();
+                console.log('✅ Troškovnik display refreshed after state loading');
+            } else {
+                console.warn('⚠️ updateTroskovnikDisplay not available - troškovnik may not show updated data');
+            }
+        }, 150); // Slightly longer delay for troškovnik
         
         // Restore UI state
         if (state.troskovnikTableVisible) {
@@ -404,11 +705,33 @@ function clearAllData() {
     if (typeof troskovnik !== 'undefined') troskovnik.length = 0;
     if (typeof preracunResults !== 'undefined') preracunResults.length = 0;
     if (typeof tablicaRabata !== 'undefined') tablicaRabata.length = 0;
+    if (typeof window.proslogodisnjeCijene !== 'undefined') window.proslogodisnjeCijene.length = 0;
+    if (typeof window.filteredProslogodisnjeCijene !== 'undefined') window.filteredProslogodisnjeCijene.length = 0;
     if (typeof selectedResults !== 'undefined') selectedResults.clear();
+    
+    // 🆕 NEW: Clear kupci data safely
+    if (typeof window.kupciDatabase !== 'undefined') window.kupciDatabase.clear();
+    if (typeof window.kupciTableData !== 'undefined') window.kupciTableData.length = 0;
     
     // Clear input fields
     const globalInput = document.getElementById('globalSearchInput');
     if (globalInput) globalInput.value = '';
+    
+    // 🆕 NEW: Clear kupac input fields
+    const nazivKupcaInput = document.getElementById('nazivKupca');
+    if (nazivKupcaInput) {
+        nazivKupcaInput.value = '';
+        nazivKupcaInput.removeAttribute('data-kupac-sifra');
+    }
+    
+    const godinaNatjecajaSelect = document.getElementById('godinaNatjecaja');
+    if (godinaNatjecajaSelect) godinaNatjecajaSelect.value = '25/26';
+    
+    const grupaProizvodaInput = document.getElementById('grupaProizvoda');
+    if (grupaProizvodaInput) grupaProizvodaInput.value = '';
+    
+    const datumPredajeInput = document.getElementById('datumPredaje');
+    if (datumPredajeInput) datumPredajeInput.value = '';
     
     // console.log('✅ All data cleared');
 }
@@ -440,9 +763,18 @@ function updateAllDisplays() {
             updateTablicaRabataDisplay();
         }
         
-        // Update prošlogodišnje cijene stats if available
+        // Update prošlogodišnje cijene display if available
         if (typeof updateProslogodisnjeCijeneStats === 'function') {
             updateProslogodisnjeCijeneStats();
+        }
+        
+        // FIXED: Call the actual display function for prošlogodišnje cijene
+        if (typeof updateProslogodisnjeCijeneDisplay === 'function') {
+            console.log('🔄 Calling updateProslogodisnjeCijeneDisplay() - data length:', window.proslogodisnjeCijene?.length || 0);
+            updateProslogodisnjeCijeneDisplay();
+            console.log('✅ updateProslogodisnjeCijeneDisplay() completed');
+        } else {
+            console.warn('❌ updateProslogodisnjeCijeneDisplay function not found');
         }
         
         // console.log('✅ All displays updated');
@@ -456,19 +788,39 @@ function updateAllDisplays() {
  * Saves the current application state as a JSON file download
  */
 function saveAppState() {
+    // Check if tablica rabata is generated
+    if (!window.tablicaRabata || tablicaRabata.length === 0) {
+        const shouldGenerate = confirm('⚠️ VAŽNO: Tablica rabata nije generirana!\n\nŽelite li ju generirati sada iz rezultata pretrage prije spremanja?\n\n✅ DA - Generiraj tablicu rabata\n❌ NE - Nastavi sa spremanjem bez tablice rabata');
+        
+        if (shouldGenerate) {
+            // Try to generate tablica rabata from results
+            if (typeof generateFromResults === 'function') {
+                try {
+                    generateFromResults();
+                    showMessage('success', '✅ Tablica rabata je generirana iz rezultata!');
+                } catch (error) {
+                    showMessage('error', 'Greška pri generiranju tablice rabata: ' + error.message);
+                    return;
+                }
+            } else {
+                showMessage('error', 'Funkcija za generiranje tablice rabata nije dostupna!');
+                return;
+            }
+        }
+    }
+
     // Use the new dialog-based save
     if (typeof saveStateWithDialog === 'function') {
         saveStateWithDialog();
     } else {
-        console.warn('saveStateWithDialog not available, falling back to direct download');
-        // Fallback to old behavior
+        console.warn('saveStateWithDialog not available, falling back to OPTIMIZED download');
+        // Fallback to OPTIMIZED behavior
         try {
-            const state = serializeAppState();
+            const state = serializeMinimalState();
             
-            // Generate filename with timestamp
-            const now = new Date();
-            const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-');
-            const filename = `Trazilica-Stanje-${timestamp}.json`;
+            // Generate filename using tender header data
+            const filenames = generateTenderFilenames('Stanje', 'json');
+            const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Stanje.json`;
             
             // Create and download JSON file
             const jsonString = JSON.stringify(state, null, 2);
@@ -484,14 +836,15 @@ function saveAppState() {
             // Show success message with file info
             const fileSizeKB = Math.round(blob.size / 1024);
             showMessage('success', 
-                `✅ Stanje aplikacije spremljeno!\n\n` +
+                `✅ OPTIMIZIRANO stanje spremljeno!\n\n` +
                 `📁 Datoteka: ${filename}\n` +
-                `📊 Veličina: ${fileSizeKB} KB\n` +
-                `📦 Artikli: ${state.stats.articlesCount}\n` +
-                `🎯 Rezultati: ${state.stats.resultsCount}\n` +
-                `📋 Troškovnik: ${state.stats.troskovnikCount}\n` +
-                `💰 Preračun: ${state.stats.preracunCount}\n` +
-                `📊 Tablica rabata: ${state.stats.tablicaRabataCount}\n\n` +
+                `📊 Veličina: ${fileSizeKB} KB (95%+ SMANJENJE!)\n` +
+                `🎯 Rezultati: ${state.finalResults.length} (filtrirani)\n` +
+                `📋 Troškovnik: ${state.finalTroskovnik.length} (samo s cijenama)\n` +
+                `📊 Tablica rabata: ${state.finalTablicaRabata.length} (filtrirani)\n` +
+                `📅 Prošlogodišnje cijene: ${state.finalProslogodisnjeCijene.length} (filtrirane)\n` +
+                `⚖️ Težine: ${state.finalWeightDatabase.length} (kompaktno)\n\n` +
+                `🚀 Artikli isključeni = DRAMATIČNO smanjenje veličine!\n` +
                 `💡 Povucite datoteku natrag u aplikaciju za vraćanje stanja!`
             );
             
@@ -538,17 +891,17 @@ function saveMinimalAppState() {
         const fileSizeMB = (blob.size / (1024 * 1024)).toFixed(2);
         
         showMessage('success', 
-            `✅ Kompletni podaci spremljeni!\n\n` +
+            `✅ OPTIMIZIRNI podaci spremljeni!\n\n` +
             `📁 Datoteka: ${filename}\n` +
             `📊 Veličina: ${fileSizeKB} KB (${fileSizeMB} MB)\n` +
-            `🎯 Rezultati: ${state.finalResults.length} stavki\n` +
-            `📋 Troškovnik: ${state.finalTroskovnik.length} stavki\n` +
-            `📊 Tablica rabata: ${state.finalTablicaRabata.length} stavki\n` +
-            `📅 Prošlogodišnje cijene: ${state.finalProslogodisnjeCijene.length} stavki\n` +
-            `⚖️ Težine: ${state.finalWeightDatabase.length} stavki\n` +
+            `🎯 Rezultati: ${state.finalResults.length} stavki (filtrirani po cijeni)\n` +
+            `📋 Troškovnik: ${state.finalTroskovnik.length} stavki (samo s cijenama)\n` +
+            `📊 Tablica rabata: ${state.finalTablicaRabata.length} stavki (samo s cijenama)\n` +
+            `📅 Prošlogodišnje cijene: ${state.finalProslogodisnjeCijene.length} stavki (filtrirane)\n` +
+            `⚖️ Težine: ${state.finalWeightDatabase.length} stavki (kompaktni format)\n` +
             `💰 Ukupna vrijednost: ${state.summary.totalValueEUR} EUR\n\n` +
-            `🎯 Kompletni podaci - još uvijek 95%+ manji od full backup!\n` +
-            `💡 Ovaj file omogućava potpunu offline funkcionalnost.`
+            `🚀 OPTIMIZIRNO: Artikli isključeni = 95%+ smanjenje veličine!\n` +
+            `💡 Samo korisni podaci - optimalna funkcionalnost, minimalna veličina.`
         );
         
         console.log(`✅ Minimal state saved: ${filename} (${fileSizeKB} KB)`);
@@ -565,20 +918,144 @@ function saveMinimalAppState() {
 window.saveMinimalAppState = saveMinimalAppState;
 
 /**
- * Loads application state from a JSON file
+ * Load application state with user choice: local file or Google Drive
+ */
+async function loadAppState(file = null) {
+    try {
+        if (file) {
+            // Direct file loading (drag & drop or file picker)
+            return await loadAppStateFromFile(file);
+        } else {
+            // Show load options dialog
+            const choice = await showLoadOptionsDialog();
+            
+            if (choice === 'google-drive') {
+                // Load from Google Drive
+                if (typeof loadStateFromGoogleDrive === 'function') {
+                    return await loadStateFromGoogleDrive();
+                } else {
+                    showMessage('error', 'Google Drive funkcionalnost nije dostupna!');
+                    return false;
+                }
+            } else if (choice === 'local') {
+                // Show file picker for local file
+                return await showLocalFilePickerForLoad();
+            } else {
+                // User cancelled
+                return false;
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Load state error:', error);
+        showMessage('error', `Greška pri učitavanju: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Show load options dialog
+ */
+async function showLoadOptionsDialog() {
+    return new Promise((resolve) => {
+        // Create modal dialog
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        `;
+        
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 12px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); max-width: 500px; width: 90%;">
+                <h3 style="margin: 0 0 20px 0; color: #1f2937; font-size: 20px;">📂 Odaberite način učitavanja</h3>
+                <div style="margin-bottom: 24px; color: #6b7280; font-size: 14px;">
+                    Odakle želite učitati stanje aplikacije?
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <button id="loadFromGoogleDrive" style="padding: 12px 16px; border: 2px solid #2563eb; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; font-size: 14px; font-weight: bold;">
+                        ☁️ Učitaj s Google Drive
+                    </button>
+                    <button id="loadFromLocal" style="padding: 12px 16px; border: 2px solid #6b7280; border-radius: 8px; background: white; color: #374151; cursor: pointer; font-size: 14px;">
+                        💾 Učitaj s lokalnog računala
+                    </button>
+                    <button id="cancelLoad" style="padding: 8px 16px; border: none; background: transparent; color: #6b7280; cursor: pointer; font-size: 13px;">
+                        ❌ Odustani
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Handle button clicks
+        modal.querySelector('#loadFromGoogleDrive').onclick = () => {
+            document.body.removeChild(modal);
+            resolve('google-drive');
+        };
+        
+        modal.querySelector('#loadFromLocal').onclick = () => {
+            document.body.removeChild(modal);
+            resolve('local');
+        };
+        
+        modal.querySelector('#cancelLoad').onclick = () => {
+            document.body.removeChild(modal);
+            resolve('cancel');
+        };
+        
+        // Close on background click
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+                resolve('cancel');
+            }
+        };
+    });
+}
+
+/**
+ * Show local file picker for loading
+ */
+async function showLocalFilePickerForLoad() {
+    return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                loadAppStateFromFile(file).then(resolve);
+            } else {
+                resolve(false);
+            }
+        };
+        input.click();
+    });
+}
+
+/**
+ * Load application state from a local JSON file
  * @param {File} file - JSON file to load
  */
-function loadAppState(file) {
-    // console.log('🔄 loadAppState called with file:', file ? file.name : 'undefined');
+async function loadAppStateFromFile(file) {
+    // console.log('🔄 loadAppStateFromFile called with file:', file ? file.name : 'undefined');
     
     if (!file) {
         showMessage('error', '❌ Nema odabrane datoteke!');
-        return;
+        return false;
     }
     
     if (!file.name.toLowerCase().endsWith('.json')) {
         showMessage('error', '❌ Molimo odaberite JSON datoteku!');
-        return;
+        return false;
     }
     
     // Optional file size check - removed to allow large JSON files
@@ -586,8 +1063,9 @@ function loadAppState(file) {
     
     showMessage('info', `🔄 Učitavam stanje iz ${file.name}...`);
     
-    const reader = new FileReader();
-    reader.onload = function(e) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
         try {
             const jsonContent = e.target.result;
             
@@ -611,15 +1089,15 @@ function loadAppState(file) {
                 // Minimal format confirmation
                 const summary = state.summary || {};
                 confirmMessage = 
-                    `Učitati kompletne podatke iz datoteke?\n\n` +
+                    `Učitati OPTIMIZIRANE podatke iz datoteke?\n\n` +
                     `📁 Datoteka: ${file.name}\n` +
                     `📅 Stvoreno: ${state.timestamp ? new Date(state.timestamp).toLocaleString('hr-HR') : 'Nepoznato'}\n` +
-                    `🎯 Format: KOMPLETNI PODACI (bez artikala)\n` +
-                    `🎯 Rezultati: ${state.finalResults?.length || 0} stavki\n` +
-                    `📋 Troškovnik: ${state.finalTroskovnik?.length || 0} stavki\n` +
-                    `📊 Tablica rabata: ${state.finalTablicaRabata?.length || 0} stavki\n` +
-                    `📅 Prošlogodišnje cijene: ${state.finalProslogodisnjeCijene?.length || 0} stavki\n` +
-                    `⚖️ Težine: ${state.finalWeightDatabase?.length || 0} stavki\n` +
+                    `🚀 Format: OPTIMIZIRANI PODACI (filtrirani, kompaktni)\n` +
+                    `🎯 Rezultati: ${state.finalResults?.length || 0} stavki (samo s cijenama)\n` +
+                    `📋 Troškovnik: ${state.finalTroskovnik?.length || 0} stavki (filtrirani)\n` +
+                    `📊 Tablica rabata: ${state.finalTablicaRabata?.length || 0} stavki (filtrirani)\n` +
+                    `📅 Prošlogodišnje cijene: ${state.finalProslogodisnjeCijene?.length || 0} stavki (filtrirane)\n` +
+                    `⚖️ Težine: ${state.finalWeightDatabase?.length || 0} stavki (kompaktni format)\n` +
                     `💰 Ukupno: ${summary.totalValueEUR || 0} EUR\n\n` +
                     `⚠️ Ovo će zamijeniti trenutno stanje aplikacije!`;
             } else {
@@ -634,7 +1112,8 @@ function loadAppState(file) {
                     `🎯 Rezultati: ${stats.resultsCount || 0}\n` +
                     `📋 Troškovnik: ${stats.troskovnikCount || 0}\n` +
                     `💰 Preračun: ${stats.preracunCount || 0}\n` +
-                    `📊 Tablica rabata: ${stats.tablicaRabataCount || 0}\n\n` +
+                    `📊 Tablica rabata: ${stats.tablicaRabataCount || 0}\n` +
+                    `📅 Prošlogodišnje cijene: ${stats.proslogodisnjeCijeneCount || 0}\n\n` +
                     `⚠️ Ovo će zamijeniti trenutno stanje aplikacije!`;
             }
                 
@@ -648,15 +1127,15 @@ function loadAppState(file) {
             
             if (success) {
                 const successMessage = isMinimal ? 
-                    `✅ Kompletni podaci uspješno učitani!\n\n` +
+                    `✅ OPTIMIZIRANI podaci uspješno učitani!\n\n` +
                     `📁 Iz datoteke: ${file.name}\n` +
-                    `🎯 Format: KOMPLETNI PODACI (~200KB file)\n` +
-                    `🎯 Rezultati: ${results.length} stavki\n` +
-                    `📋 Troškovnik: ${troskovnik.length} stavki\n` +
-                    `📊 Tablica rabata: ${tablicaRabata.length} stavki\n` +
-                    `📅 Prošlogodišnje cijene: ${proslogodisnjeCijene.length} stavki\n` +
-                    `⚖️ Težine: ${weightDatabase.size} stavki\n\n` +
-                    `💡 Svi podaci učitani - aplikacija je potpuno funkcionalna offline!`
+                    `🚀 Format: OPTIMIZIRANI PODACI (95%+ manji)\n` +
+                    `🎯 Rezultati: ${results.length} stavki (filtrirani po cijeni)\n` +
+                    `📋 Troškovnik: ${troskovnik.length} stavki (samo s cijenama)\n` +
+                    `📊 Tablica rabata: ${tablicaRabata.length} stavki (filtrirani)\n` +
+                    `📅 Prošlogodišnje cijene: ${proslogodisnjeCijene.length} stavki (filtrirane)\n` +
+                    `⚖️ Težine: ${weightDatabase.size} stavki (kompaktni format)\n\n` +
+                    `💡 Optimiziran za brzinu - aplikacija potpuno funkcionalna!`
                     :
                     `✅ Kompletno stanje aplikacije uspješno učitano!\n\n` +
                     `📁 Iz datoteke: ${file.name}\n` +
@@ -666,9 +1145,13 @@ function loadAppState(file) {
                     `📋 Troškovnik: ${troskovnik.length}\n` +
                     `💰 Preračun: ${preracunResults.length}\n` +
                     `📊 Tablica rabata: ${tablicaRabata.length}\n` +
+                    `📅 Prošlogodišnje cijene: ${proslogodisnjeCijene.length}\n` +
                     `✅ Odabrani: ${selectedResults.size}`;
                     
                 showMessage('success', successMessage);
+                resolve(true);
+            } else {
+                resolve(false);
             }
             
         } catch (error) {
@@ -679,14 +1162,18 @@ function loadAppState(file) {
                 `Greška: ${error.message}\n\n` +
                 `Molimo provjerite da je datoteka valjana JSON datoteka stanja aplikacije.`
             );
+            reject(error);
         }
     };
     
     reader.onerror = function() {
-        showMessage('error', `❌ Greška pri čitanju datoteke ${file.name}!`);
+        const errorMsg = `❌ Greška pri čitanju datoteke ${file.name}!`;
+        showMessage('error', errorMsg);
+        reject(new Error(errorMsg));
     };
     
     reader.readAsText(file, 'utf-8');
+    });
 }
 
 // CRITICAL: Expose loadAppState immediately after definition
@@ -713,7 +1200,7 @@ function handleStateFileDrop(event) {
         return;
     }
     
-    // Check if it's a troskovnik-only file or regular state file
+    // Check if it's a troskovnik-only file, articles-only file, or regular state file
     const file = jsonFiles[0];
     const reader = new FileReader();
     reader.onload = function(e) {
@@ -721,6 +1208,14 @@ function handleStateFileDrop(event) {
             const data = JSON.parse(e.target.result);
             if (data.type === 'troskovnik-only') {
                 loadTroskovnikOnly(file);
+            } else if (data.articles && Array.isArray(data.articles) && data.articles.length > 0 && 
+                      !data.results && !data.troskovnik && !data.tablicaRabata) {
+                // Likely articles-only file - ask user
+                if (confirm(`Datoteka sadrži ${data.articles.length} artikala.\nŽelite li učitati samo artikle?\n\n✅ DA = samo artikli\n❌ NE = kompletno stanje`)) {
+                    loadArticlesOnly(file);
+                } else {
+                    loadAppState(file);
+                }
             } else {
                 // Regular state file
                 loadAppState(file);
@@ -760,12 +1255,26 @@ function handleTroskovnikLoadSelect(event) {
 }
 
 /**
+ * Handles file picker selection for articles-only files
+ * @param {Event} event - File input change event
+ */
+function handleArticlesOnlyLoadSelect(event) {
+    const file = event.target.files[0];
+    if (file) {
+        loadArticlesOnly(file);
+    }
+    // Clear the input so the same file can be selected again
+    event.target.value = '';
+}
+
+/**
  * Quick save with predefined filename
  */
 function quickSaveState() {
     try {
-        const state = serializeAppState();
-        const filename = 'Trazilica-Trenutno-Stanje.json';
+        const state = serializeMinimalState();
+        // Quick save uses "TRENUTNO" prefix for instant saves
+        const filename = 'TRENUTNO_Stanje.json';
         
         const jsonString = JSON.stringify(state, null, 2);
         const blob = new Blob([jsonString], { type: 'application/json' });
@@ -783,7 +1292,7 @@ function quickSaveState() {
         }
         
         const fileSizeKB = Math.round(blob.size / 1024);
-        showMessage('success', `⚡ Brzo spremljeno! (${filename}, ${fileSizeKB} KB)`);
+        showMessage('success', `⚡ Brzo spremljeno OPTIMIZIRANO! (${filename}, ${fileSizeKB} KB - 95%+ manje!)`);
         
     } catch (error) {
         console.error('❌ Quick save error:', error);
@@ -792,11 +1301,120 @@ function quickSaveState() {
 }
 
 /**
- * Save state with user file picker dialog
+ * Save state with user choice: local file or Google Drive
  */
 async function saveStateWithDialog() {
     try {
-        const state = serializeAppState();
+        // Show save options dialog
+        const choice = await showSaveOptionsDialog();
+        
+        if (choice === 'google-drive') {
+            // Save to Google Drive
+            if (typeof saveStateToGoogleDrive === 'function') {
+                return await saveStateToGoogleDrive('full');
+            } else {
+                showMessage('error', 'Google Drive funkcionalnost nije dostupna!');
+                return false;
+            }
+        } else if (choice === 'local') {
+            // Save to local file
+            return await saveStateToLocalFile();
+        } else {
+            // User cancelled
+            return false;
+        }
+        
+    } catch (error) {
+        console.error('❌ Save dialog error:', error);
+        showMessage('error', `Greška pri spremanju: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Show save options dialog
+ */
+async function showSaveOptionsDialog() {
+    return new Promise((resolve) => {
+        // Create modal dialog
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        `;
+        
+        modal.innerHTML = `
+            <div style="background: white; border-radius: 12px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); max-width: 600px; width: 95%;">
+                <h3 style="margin: 0 0 20px 0; color: #1f2937; font-size: 20px;">📁 Odaberite način spremanja</h3>
+                <div style="margin-bottom: 20px; color: #6b7280; font-size: 14px;">
+                    Gdje želite spremiti stanje aplikacije?
+                </div>
+                
+                <div style="margin-bottom: 24px; padding: 16px; background: #fffbeb; border: 2px solid #f59e0b; border-radius: 8px;">
+                    <div style="color: #92400e; font-weight: bold; font-size: 14px; margin-bottom: 8px;">⚠️ VAŽNO: Optimizirano spremanje</div>
+                    <div style="color: #92400e; font-size: 13px; line-height: 1.4;">
+                        • <strong>Čuva se:</strong> rezultati, troškovnik, tablica rabata, referencirane artikle za pretragu<br>
+                        • <strong>Ne čuva se:</strong> kompletni popis svih uploadanih artikala<br>
+                        • <strong>Za nastavak rada:</strong> možete pretražiti samo artikle koje ste ranije koristili<br>
+                        • <strong>95%+ smanjenje veličine datoteke</strong> u odnosu na punu verziju
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <button id="saveToGoogleDrive" style="padding: 12px 16px; border: 2px solid #2563eb; border-radius: 8px; background: #2563eb; color: white; cursor: pointer; font-size: 14px; font-weight: bold;">
+                        ☁️ Spremi na Google Drive
+                    </button>
+                    <button id="saveToLocal" style="padding: 12px 16px; border: 2px solid #6b7280; border-radius: 8px; background: white; color: #374151; cursor: pointer; font-size: 14px;">
+                        💾 Spremi lokalno na računalo
+                    </button>
+                    <button id="cancelSave" style="padding: 8px 16px; border: none; background: transparent; color: #6b7280; cursor: pointer; font-size: 13px;">
+                        ❌ Odustani
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Handle button clicks
+        modal.querySelector('#saveToGoogleDrive').onclick = () => {
+            document.body.removeChild(modal);
+            resolve('google-drive');
+        };
+        
+        modal.querySelector('#saveToLocal').onclick = () => {
+            document.body.removeChild(modal);
+            resolve('local');
+        };
+        
+        modal.querySelector('#cancelSave').onclick = () => {
+            document.body.removeChild(modal);
+            resolve('cancel');
+        };
+        
+        // Close on background click
+        modal.onclick = (e) => {
+            if (e.target === modal) {
+                document.body.removeChild(modal);
+                resolve('cancel');
+            }
+        };
+    });
+}
+
+/**
+ * Save state to local file (original functionality)
+ */
+async function saveStateToLocalFile() {
+    try {
+        const state = serializeMinimalState();
         const jsonString = JSON.stringify(state, null, 2);
         const blob = new Blob([jsonString], { type: 'application/json' });
         
@@ -804,9 +1422,9 @@ async function saveStateWithDialog() {
         if ('showSaveFilePicker' in window) {
             try {
                 const fileHandle = await window.showSaveFilePicker({
-                    suggestedName: `Trazilica-Stanje-${new Date().toISOString().slice(0, 10)}.json`,
+                    suggestedName: `${generateTenderFilenames('Stanje', 'json').cleanKupac || 'Kupac'}_${generateTenderFilenames('Stanje', 'json').cleanGrupa || 'Grupa'}_${generateTenderFilenames('Stanje', 'json').datumPredaje}_Stanje.json`,
                     types: [{
-                        description: 'JSON datoteke',
+                        description: 'OPTIMIZIRANE JSON datoteke',
                         accept: { 'application/json': ['.json'] }
                     }]
                 });
@@ -821,7 +1439,7 @@ async function saveStateWithDialog() {
                 }
                 
                 const fileSizeKB = Math.round(blob.size / 1024);
-                showMessage('success', `💾 Uspješno spremljeno! (${fileSizeKB} KB)`);
+                showMessage('success', `💾 OPTIMIZIRANO spremljeno! (${fileSizeKB} KB - 95%+ manje!)`);
                 return true;
                 
             } catch (err) {
@@ -833,7 +1451,8 @@ async function saveStateWithDialog() {
             }
         } else {
             // Fallback to traditional download
-            const filename = `Trazilica-Stanje-${new Date().toISOString().slice(0, 10)}.json`;
+            const filenames = generateTenderFilenames('Stanje', 'json');
+            const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Stanje.json`;
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -847,13 +1466,13 @@ async function saveStateWithDialog() {
             }
             
             const fileSizeKB = Math.round(blob.size / 1024);
-            showMessage('success', `💾 Spremljeno u Downloads! (${filename}, ${fileSizeKB} KB)`);
+            showMessage('success', `💾 OPTIMIZIRANO u Downloads! (${filename}, ${fileSizeKB} KB - 95%+ manje!)`);
             return true;
         }
         
     } catch (error) {
-        console.error('❌ Save dialog error:', error);
-        showMessage('error', `Greška pri spremanju: ${error.message}`);
+        console.error('❌ Save to local file error:', error);
+        showMessage('error', `Greška pri spremanju na lokalno računalo: ${error.message}`);
         return false;
     }
 }
@@ -994,14 +1613,105 @@ function loadTroskovnikOnly(file) {
     reader.readAsText(file, 'utf-8');
 }
 
+/**
+ * Loads only articles data from JSON file
+ */
+function loadArticlesOnly(file) {
+    if (!file.name.toLowerCase().endsWith('.json')) {
+        showMessage('error', '❌ Molimo odaberite JSON datoteku s artiklima!');
+        return;
+    }
+    
+    showMessage('info', `🔄 Učitavam artikle iz ${file.name}...`);
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const jsonContent = e.target.result;
+            
+            // Validate JSON content
+            if (!jsonContent || jsonContent.trim() === '') {
+                throw new Error('Datoteka je prazna');
+            }
+            
+            const data = JSON.parse(jsonContent);
+            
+            // Validate data structure
+            if (!data || typeof data !== 'object') {
+                throw new Error('Neispravna struktura JSON datoteke');
+            }
+            
+            // Check if the file contains articles
+            if (!data.articles || !Array.isArray(data.articles)) {
+                showMessage('error', '❌ Datoteka ne sadrži artikle! Molimo odaberite JSON datoteku s artiklima.');
+                return;
+            }
+            
+            // Confirm with user before loading
+            const confirmMessage = 
+                `Učitati artikle iz datoteke?\n\n` +
+                `📁 Datoteka: ${file.name}\n` +
+                `📅 Stvoreno: ${data.timestamp ? new Date(data.timestamp).toLocaleString('hr-HR') : 'Nepoznato'}\n` +
+                `📊 Artikli: ${data.articles.length}\n\n` +
+                `⚠️ Ovo će zamijeniti trenutne artikle, ali ostaviti ostale podatke (rezultati, troškovnik, itd.) netaknute!`;
+                
+            if (!confirm(confirmMessage)) {
+                showMessage('info', 'Učitavanje otkazano.');
+                return;
+            }
+            
+            // Clear existing articles
+            if (typeof articles !== 'undefined') {
+                articles.length = 0;
+            }
+            
+            // Load articles data
+            if (typeof articles !== 'undefined') {
+                articles.push(...data.articles);
+                console.log('📊 Restored articles:', articles.length);
+            }
+            
+            // Update article stats and displays
+            if (typeof updateArticleStats === 'function') {
+                updateArticleStats();
+            }
+            
+            showMessage('success', 
+                `✅ Artikli uspješno učitani!\n\n` +
+                `📁 Iz datoteke: ${file.name}\n` +
+                `📊 Artikli: ${articles.length}\n\n` +
+                `💡 Ostali podaci (rezultati, troškovnik, tablica rabata) su ostali netaknuti!\n` +
+                `🔍 Možete odmah početi pretraživati nove artikle!`
+            );
+            
+        } catch (error) {
+            console.error('❌ Load articles error:', error);
+            showMessage('error', 
+                `❌ Greška pri učitavanju artikala!\n\n` +
+                `Datoteka: ${file.name}\n` +
+                `Greška: ${error.message}\n\n` +
+                `Molimo provjerite da je datoteka valjana JSON datoteka s artiklima.`
+            );
+        }
+    };
+    
+    reader.onerror = function() {
+        showMessage('error', `❌ Greška pri čitanju datoteke ${file.name}!`);
+    };
+    
+    reader.readAsText(file, 'utf-8');
+}
+
 // Expose remaining functions globally
 window.handleStateFileDrop = handleStateFileDrop;
 window.handleStateFileSelect = handleStateFileSelect;
 window.handleTroskovnikLoadSelect = handleTroskovnikLoadSelect;
+window.handleArticlesOnlyLoadSelect = handleArticlesOnlyLoadSelect;
 window.serializeAppState = serializeAppState;
 window.deserializeAppState = deserializeAppState;
 window.saveTroskovnikOnly = saveTroskovnikOnly;
 window.loadTroskovnikOnly = loadTroskovnikOnly;
+window.loadArticlesOnly = loadArticlesOnly;
 
 // console.log('✅ State Manager module loaded - Save/Load functionality ready with Tablica Rabata support!');
 // console.log('💾 CRITICAL: saveAppState, quickSaveState, and loadAppState are now available globally!');

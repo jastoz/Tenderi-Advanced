@@ -4,6 +4,76 @@
  */
 
 /**
+ * Generates clean filenames from header data for ZIP export
+ * @param {string} fileType - Type of file (Stanje, Troskovnik, Rabata)
+ * @param {string} extension - File extension (json, xlsx, xml)
+ * @returns {object} Object with zipName and internalName
+ */
+function generateTenderFilenames(fileType, extension) {
+    // Get header data
+    const nazivKupca = document.getElementById('nazivKupca')?.value || 'Nepoznat_Kupac';
+    const grupaProizvoda = document.getElementById('grupaProizvoda')?.value || 'Grupa';
+    const datumPredaje = document.getElementById('datumPredaje')?.value || new Date().toISOString().slice(0, 10);
+    
+    // Clean filename components
+    const cleanKupac = cleanFilenameText(nazivKupca);
+    const cleanGrupa = cleanFilenameText(grupaProizvoda);
+    
+    // Generate ZIP filename (main package name)
+    const zipName = `${cleanKupac}_${cleanGrupa}_${datumPredaje}.zip`;
+    
+    // Generate internal filename (inside ZIP)
+    const fileTypeMap = {
+        'Stanje': '01_Stanje_Aplikacije',
+        'Troskovnik': '02_Troskovnik', 
+        'Rabata': '03_Tablica_Rabata'
+    };
+    
+    const internalName = `${fileTypeMap[fileType] || fileType}.${extension}`;
+    
+    return {
+        zipName: zipName,
+        internalName: internalName,
+        cleanKupac: cleanKupac,
+        cleanGrupa: cleanGrupa,
+        datumPredaje: datumPredaje
+    };
+}
+
+/**
+ * Cleans text for use in filenames
+ * Enhanced to better handle Croatian characters while maintaining readability
+ * @param {string} text - Text to clean
+ * @returns {string} Filename-safe text
+ */
+function cleanFilenameText(text) {
+    if (!text) return 'Nedefinirano';
+    
+    return text
+        .trim()
+        // Croatian character transliteration (more comprehensive)
+        .replace(/[čćç]/gi, 'c')
+        .replace(/[žž]/gi, 'z') 
+        .replace(/[šš]/gi, 's')
+        .replace(/[đđ]/gi, 'd')
+        // Handle additional special characters
+        .replace(/[àáâãäå]/gi, 'a')
+        .replace(/[èéêë]/gi, 'e')
+        .replace(/[ìíîï]/gi, 'i')
+        .replace(/[òóôõö]/gi, 'o')
+        .replace(/[ùúûü]/gi, 'u')
+        .replace(/[ñ]/gi, 'n')
+        // Remove problematic characters that cause filename issues
+        .replace(/[^\w\s-]/g, '')  // Remove special characters except word chars, spaces, hyphens
+        .replace(/\s+/g, ' ')      // Normalize spaces (don't convert to underscore yet)
+        .replace(/\s/g, '_')       // Replace spaces with underscores
+        .replace(/_+/g, '_')       // Replace multiple underscores with single
+        .replace(/^_|_$/g, '')     // Remove leading/trailing underscores
+        .substring(0, 35)          // Increased limit for better readability
+        .toUpperCase();
+}
+
+/**
  * Creates Excel formula cell for XLSX export
  * @param {string} formula - Excel formula (without =)
  * @param {number} value - Fallback numeric value
@@ -31,6 +101,40 @@ function createExcelNumericCell(value, style = {}) {
         v: value,
         s: style
     };
+}
+
+/**
+ * Fixes Croatian character encoding issues from Google Sheets
+ * Converts incorrectly encoded characters back to proper Croatian characters
+ * @param {string} text - Text with encoding issues
+ * @returns {string} Text with corrected Croatian characters
+ */
+function fixCroatianEncoding(text) {
+    if (!text) return '';
+    return text
+        // Fix Č/č encoding issues
+        .replace(/È/g, 'Č')
+        .replace(/è/g, 'č')
+        // Fix Ć/ć encoding issues - corrected mapping
+        .replace(/Ì/g, 'Ć') 
+        .replace(/ì/g, 'ć')
+        .replace(/Æ/g, 'Ć')  // Additional Ć mapping
+        .replace(/æ/g, 'ć')  // Additional ć mapping
+        // Fix Š/š encoding issues
+        .replace(/Ò/g, 'Š')
+        .replace(/ò/g, 'š')
+        // Fix Ž/ž encoding issues
+        .replace(/Ù/g, 'Ž')
+        .replace(/ù/g, 'ž')
+        .replace(/Ø/g, 'Ž')  // Additional Ž mapping
+        .replace(/ø/g, 'ž')  // Additional ž mapping
+        // Fix Đ/đ encoding issues
+        .replace(/Ð/g, 'Đ')
+        .replace(/ð/g, 'đ')
+        // Additional Windows-1252 to UTF-8 fixes
+        .replace(/Å /g, 'Š ')  // Š followed by space
+        .replace(/Ÿ/g, 'Ž')   // Another Ž variant
+        .replace(/ÿ/g, 'ž');   // Another ž variant
 }
 
 /**
@@ -304,6 +408,62 @@ function getBadgeClass(source) {
 }
 
 /**
+ * ENHANCED: Parses source information to extract meaningful source name for display
+ * Prioritizes sheet name over filename for Excel files
+ * @param {string} source - Full source string (e.g., "Cjenik_Mikado - Sheet1", "Lager lista")
+ * @returns {string} User-friendly source name (e.g., "SHEET1", "LAGER", "URPD")
+ */
+function parseSourceName(source) {
+    if (!source) return 'NEPOZNAT';
+    
+    // First, check if this is Excel format with sheet name (filename - sheetname)
+    const parts = source.split(' - ');
+    if (parts.length === 2) {
+        // This is an Excel file with sheet name
+        const filename = parts[0].toLowerCase();
+        const sheetName = parts[1].trim();
+        
+        // For LAGER/URPD, show the type regardless of sheet name
+        if (filename.includes('lager')) {
+            return sheetName.toUpperCase(); // Show sheet name for LAGER
+        }
+        if (filename.includes('urpd')) {
+            return sheetName.toUpperCase(); // Show sheet name for URPD
+        }
+        
+        // For other Excel files, show sheet name
+        return sheetName.toUpperCase();
+    }
+    
+    // For single part sources (CSV files or simple names)
+    const lowerSource = source.toLowerCase();
+    
+    // Handle LAGER sources
+    if (lowerSource.includes('lager')) {
+        return 'LAGER';
+    }
+    
+    // Handle URPD sources
+    if (lowerSource.includes('urpd')) {
+        return 'URPD';
+    }
+    
+    // For other sources, clean up the name
+    let cleanSource = source
+        .replace(/\.(xlsx?|csv)$/i, '') // Remove file extensions
+        .replace(/[_\s]+/g, ' ') // Replace underscores and multiple spaces with single space
+        .trim()
+        .toUpperCase();
+    
+    // Limit length for display
+    if (cleanSource.length > 15) {
+        cleanSource = cleanSource.substring(0, 15) + '...';
+    }
+    
+    return cleanSource || 'VANJSKI';
+}
+
+/**
  * ENHANCED: Checks if article is "our article" (LAGER or URPD source)
  * OLD LOGIC: Only checks source
  * @param {string} source - Article source
@@ -537,11 +697,13 @@ function throttle(func, limit) {
 }
 
 // Expose functions globally
+window.fixCroatianEncoding = fixCroatianEncoding;
 window.standardizeText = standardizeText;
 window.extractWeight = extractWeight;
 window.parseSmartDate = parseSmartDate;
 window.getSourceColor = getSourceColor;
 window.getBadgeClass = getBadgeClass;
+window.parseSourceName = parseSourceName;
 window.isOurArticle = isOurArticle;
 window.validatePrice = validatePrice;
 window.formatPrice = formatPrice;

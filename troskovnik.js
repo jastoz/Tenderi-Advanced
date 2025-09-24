@@ -1693,7 +1693,7 @@ function exportTroskovnikExcel() {
             item.mjerna_jedinica,
             item.tezina,
             item.trazena_kolicina,
-            item.izlazna_cijena,
+            (parseFloat(item.izlazna_cijena) || 0).toFixed(2).replace('.', ','),
             ruc > 0 ? ruc : '', // G: RUC (€) - Excel number or empty
             item.nabavna_cijena_1,
             item.dobavljac_1 || '',
@@ -1792,7 +1792,8 @@ function exportTroskovnikExcel() {
         v: 100.0, 
         s: { font: { bold: true }, fill: { fgColor: { rgb: "E0E7FF" } } } 
     };
-    
+
+
     XLSX.utils.book_append_sheet(wb, ws, 'Kompletni Troskovnik');
     
     // Generate filename using tender header data

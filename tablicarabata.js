@@ -401,12 +401,18 @@ function exportTablicaRabataExcel() {
     ];
     ws['!cols'] = wscols;
     
+    // Add missing RB numbers to G1 cell
+    const missingRBs = getMissingRBString();
+    if (missingRBs) {
+        ws['G1'] = { t: 's', v: missingRBs };
+    }
+    
     // Add worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, 'Enhanced Tablica Rabata');
     
-    // Generate filename with timestamp
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-    const filename = `Enhanced_Tablica_Rabata_${timestamp}.xlsx`;
+    // Generate filename using tender header data
+    const filenames = generateTenderFilenames('Rabata', 'xlsx');
+    const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Rabata.xlsx`;
     
     // Save file
     XLSX.writeFile(wb, filename);
@@ -654,6 +660,45 @@ function getTroskovnikItemForRB(rb) {
 }
 
 /**
+ * Helper function to get missing RB numbers as a string for export
+ * @returns {string} Missing RB numbers in format "1,4,22,33" or empty string if none missing
+ */
+function getMissingRBString() {
+    if (!window.troskovnik || !Array.isArray(window.troskovnik) || troskovnik.length === 0) {
+        console.log('🔍 DEBUG getMissingRBString: troskovnik je prazan ili nedostaje');
+        return '';
+    }
+    
+    // Skupljamo sve RB iz troškovnika - FIXED: Konvertiramo u brojeve
+    const allRBs = troskovnik.map(t => parseInt(t.redni_broj)).filter(x => !isNaN(x));
+    console.log(`🔍 DEBUG getMissingRBString: Troskovnik RBs: [${allRBs.join(', ')}]`);
+    
+    if (allRBs.length === 0) {
+        console.log('🔍 DEBUG getMissingRBString: Nema valjan RB brojeva u troskovniku');
+        return '';
+    }
+    
+    const minRB = Math.min(...allRBs);
+    const maxRB = Math.max(...allRBs);
+    console.log(`🔍 DEBUG getMissingRBString: Range ${minRB}-${maxRB}`);
+    
+    // Skupljamo sve RB iz tablice rabata - FIXED: Konvertiramo u brojeve
+    const rabataRBs = new Set((window.tablicaRabata || []).map(r => parseInt(r.redni_broj_grupe)).filter(x => !isNaN(x)));
+    console.log(`🔍 DEBUG getMissingRBString: Tablica rabata RBs: [${Array.from(rabataRBs).join(', ')}]`);
+    
+    // Tražimo koji brojevi nedostaju
+    const missing = [];
+    for (let i = minRB; i <= maxRB; i++) {
+        if (!rabataRBs.has(i)) {
+            missing.push(i);
+        }
+    }
+    
+    console.log(`🔍 DEBUG getMissingRBString: Missing RBs: [${missing.join(', ')}]`);
+    return missing.join(',');
+}
+
+/**
  * NEW: Function to show missing RBs in tablica rabata
  */
 function showMissingRBs() {
@@ -731,6 +776,7 @@ if (typeof window.generateFromResults !== 'undefined') {
 window.getGroupColor = getGroupColor;
 window.getTroskovnikItemForRB = getTroskovnikItemForRB;
 window.showMissingRBs = showMissingRBs;
+window.getMissingRBString = getMissingRBString;
 
 // console.log('✅ FIXED Tablica Rabata module loaded:');
 // console.log('🎨 FIXED: All red colors changed to purple (#7c3aed)');
@@ -820,12 +866,18 @@ function exportTablicaRabataExcel() {
             }
         }
         
+        // Add missing RB numbers to G1 cell
+        const missingRBs = getMissingRBString();
+        if (missingRBs) {
+            ws['G1'] = { t: 's', v: missingRBs };
+        }
+        
         // Add the main worksheet
         XLSX.utils.book_append_sheet(wb, ws, 'Enhanced Tablica Rabata');
         
-        // Generate filename with timestamp
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-        const filename = `Enhanced_Tablica_Rabata_${timestamp}.xlsx`;
+        // Generate filename using tender header data
+        const filenames = generateTenderFilenames('Rabata', 'xlsx');
+        const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Rabata.xlsx`;
         
         // Save file
         XLSX.writeFile(wb, filename);
@@ -871,121 +923,237 @@ function exportTablicaRabataXML() {
         const totalValue = tablicaRabata.reduce((sum, item) => sum + (item.cijena * item.kolicina_troskovnik), 0);
         const enhancedCount = tablicaRabata.filter(item => item.calculation_source === 'enhanced_results').length;
         
-        // Use simple HTML table format that Excel can open directly
-        let htmlContent = '<!DOCTYPE html>\n';
-        htmlContent += '<html>\n';
-        htmlContent += '<head>\n';
-        htmlContent += '<meta charset="utf-8">\n';
-        htmlContent += '<title>Enhanced Tablica Rabata</title>\n';
-        htmlContent += '<style>\n';
-        htmlContent += 'table { border-collapse: collapse; width: 100%; font-family: Calibri, sans-serif; }\n';
-        htmlContent += 'th { background-color: #4472C4; color: white; font-weight: bold; padding: 8px; border: 1px solid #000; text-align: center; }\n';
-        htmlContent += 'td { padding: 6px; border: 1px solid #000; }\n';
-        htmlContent += '.currency { text-align: right; }\n';
-        htmlContent += '.number { text-align: right; }\n';
-        htmlContent += '.text { text-align: left; }\n';
-        htmlContent += '</style>\n';
-        htmlContent += '</head>\n';
-        htmlContent += '<body>\n';
-        htmlContent += '<table>\n';
+        // Create proper Excel XML Spreadsheet format
+        let xmlContent = '<?xml version="1.0" encoding="UTF-8"?>\n';
+        xmlContent += '<?mso-application progid="Excel.Sheet"?>\n';
+        xmlContent += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n';
+        xmlContent += ' xmlns:o="urn:schemas-microsoft-com:office:office"\n';
+        xmlContent += ' xmlns:x="urn:schemas-microsoft-com:office:excel"\n';
+        xmlContent += ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"\n';
+        xmlContent += ' xmlns:html="http://www.w3.org/TR/REC-html40">\n';
         
-        // Header row (identical to Excel export)
-        htmlContent += '<tr>\n';
+        // DocumentProperties
+        xmlContent += '<DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">\n';
+        xmlContent += '<Title>Enhanced Tablica Rabata</Title>\n';
+        xmlContent += '<Subject>Tablica rabata export</Subject>\n';
+        xmlContent += '<Author>Tražilica Proizvoda</Author>\n';
+        xmlContent += '<Created>' + new Date().toISOString() + '</Created>\n';
+        xmlContent += '</DocumentProperties>\n';
+        
+        // Styles
+        xmlContent += '<Styles>\n';
+        xmlContent += '<Style ss:ID="Default" ss:Name="Normal">\n';
+        xmlContent += '<Alignment ss:Vertical="Bottom"/>\n';
+        xmlContent += '<Borders/>\n';
+        xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>\n';
+        xmlContent += '<Interior/>\n';
+        xmlContent += '<NumberFormat/>\n';
+        xmlContent += '<Protection/>\n';
+        xmlContent += '</Style>\n';
+        
+        // Header style
+        xmlContent += '<Style ss:ID="Header">\n';
+        xmlContent += '<Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/>\n';
+        xmlContent += '<Borders>\n';
+        xmlContent += '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '</Borders>\n';
+        xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/>\n';
+        xmlContent += '<Interior ss:Color="#4472C4" ss:Pattern="Solid"/>\n';
+        xmlContent += '</Style>\n';
+        
+        // Currency style
+        xmlContent += '<Style ss:ID="Currency">\n';
+        xmlContent += '<Alignment ss:Horizontal="Right" ss:Vertical="Bottom"/>\n';
+        xmlContent += '<Borders>\n';
+        xmlContent += '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '</Borders>\n';
+        xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>\n';
+        xmlContent += '<NumberFormat ss:Format="&quot;€&quot;#,##0.00"/>\n';
+        xmlContent += '</Style>\n';
+        
+        // Number style
+        xmlContent += '<Style ss:ID="Number">\n';
+        xmlContent += '<Alignment ss:Horizontal="Right" ss:Vertical="Bottom"/>\n';
+        xmlContent += '<Borders>\n';
+        xmlContent += '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '</Borders>\n';
+        xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>\n';
+        xmlContent += '<NumberFormat ss:Format="#,##0.000"/>\n';
+        xmlContent += '</Style>\n';
+        
+        // Text style
+        xmlContent += '<Style ss:ID="Text">\n';
+        xmlContent += '<Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>\n';
+        xmlContent += '<Borders>\n';
+        xmlContent += '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '</Borders>\n';
+        xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>\n';
+        xmlContent += '</Style>\n';
+        
+        // Missing RB style (yellow background)
+        xmlContent += '<Style ss:ID="MissingRB">\n';
+        xmlContent += '<Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>\n';
+        xmlContent += '<Borders>\n';
+        xmlContent += '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+        xmlContent += '</Borders>\n';
+        xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#FF0000" ss:Bold="1"/>\n';
+        xmlContent += '<Interior ss:Color="#FFEB3B" ss:Pattern="Solid"/>\n';
+        xmlContent += '</Style>\n';
+        
+        xmlContent += '</Styles>\n';
+        
+        // Worksheet
+        xmlContent += '<Worksheet ss:Name="Tablica Rabata">\n';
+        xmlContent += '<Table>\n';
+        
+        // Define column widths
+        xmlContent += '<Column ss:Width="80"/>\n';  // Šifra artikla
+        xmlContent += '<Column ss:Width="200"/>\n'; // Naziv artikla
+        xmlContent += '<Column ss:Width="40"/>\n';  // J.M.
+        xmlContent += '<Column ss:Width="80"/>\n';  // Cijena za tab.
+        xmlContent += '<Column ss:Width="60"/>\n';  // RB Grupe
+        xmlContent += '<Column ss:Width="200"/>\n'; // Naziv stavke u troškovniku
+        xmlContent += '<Column ss:Width="80"/>\n';  // J.M. troškovnik
+        xmlContent += '<Column ss:Width="80"/>\n';  // Količina
+        xmlContent += '<Column ss:Width="80"/>\n';  // Ukupno
+        xmlContent += '<Column ss:Width="120"/>\n'; // Dobavljač
+        xmlContent += '<Column ss:Width="60"/>\n';  // Izvor
+        xmlContent += '<Column ss:Width="70"/>\n';  // Enhanced
+        xmlContent += '<Column ss:Width="120"/>\n'; // Formula cijene
+        xmlContent += '<Column ss:Width="80"/>\n';  // Težina
+        xmlContent += '<Column ss:Width="80"/>\n';  // VPC/kg
+        
+        // Header row
         const headers = [
             'Šifra artikla', 'Naziv artikla', 'J.M.', 'Cijena za tab. (€)',
             'RB Grupe', 'Naziv stavke u troškovniku', 'J.M. troškovnik', 'Količina', 
             'Ukupno (€)', 'Dobavljač', 'Izvor', 'Enhanced', 'Formula cijene', 'Težina (kg)', 'VPC/kg (€)'
         ];
         
+        xmlContent += '<Row>\n';
         headers.forEach(header => {
-            htmlContent += `<th>${escapeHTML(header)}</th>\n`;
+            xmlContent += `<Cell ss:StyleID="Header"><Data ss:Type="String">${escapeXML(header)}</Data></Cell>\n`;
         });
-        htmlContent += '</tr>\n';
+        xmlContent += '</Row>\n';
         
-        // Data rows (identical structure to Excel export)
+        // Add missing RB numbers row (equivalent to G1 in Excel)
+        const missingRBs = getMissingRBString();
+        if (missingRBs) {
+            xmlContent += '<Row>\n';
+            xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String">NEDOSTAJU</Data></Cell>\n'; // A
+            xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String">RB BROJEVI</Data></Cell>\n'; // B
+            xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String">IZ</Data></Cell>\n'; // C
+            xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String">TROŠKOVNIKA:</Data></Cell>\n'; // D
+            xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String"></Data></Cell>\n'; // E
+            xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String"></Data></Cell>\n'; // F
+            xmlContent += `<Cell ss:StyleID="MissingRB"><Data ss:Type="String">${escapeXML(missingRBs)}</Data></Cell>\n`; // G
+            // Fill remaining columns
+            for (let i = 7; i < headers.length; i++) {
+                xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String"></Data></Cell>\n';
+            }
+            xmlContent += '</Row>\n';
+        }
+        
+        // Data rows
         tablicaRabata.forEach(item => {
-            htmlContent += '<tr>\n';
+            xmlContent += '<Row>\n';
             
             // Šifra artikla
-            htmlContent += `<td class="text">${escapeHTML(item.sifra_artikla || '')}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.sifra_artikla || '')}</Data></Cell>\n`;
             
             // Naziv artikla
-            htmlContent += `<td class="text">${escapeHTML(item.naziv_artikla || '')}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.naziv_artikla || '')}</Data></Cell>\n`;
             
             // J.M.
-            htmlContent += `<td class="text">${escapeHTML(item.jedinica_mjere || '')}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.jedinica_mjere || '')}</Data></Cell>\n`;
             
             // Cijena za tab.
-            htmlContent += `<td class="currency">€${(item.cijena || 0).toFixed(2)}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Currency"><Data ss:Type="Number">${(item.cijena || 0).toFixed(2)}</Data></Cell>\n`;
             
             // RB Grupe
-            htmlContent += `<td class="text">${item.redni_broj_grupe || ''}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.redni_broj_grupe || '')}</Data></Cell>\n`;
             
             // Naziv stavke u troškovniku
-            htmlContent += `<td class="text">${escapeHTML(item.naziv_stavke_troskovnik || '')}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.naziv_stavke_troskovnik || '')}</Data></Cell>\n`;
             
             // J.M. troškovnik
-            htmlContent += `<td class="text">${escapeHTML(item.jedinica_mjere_troskovnik || '')}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.jedinica_mjere_troskovnik || '')}</Data></Cell>\n`;
             
             // Količina
-            htmlContent += `<td class="number">${(item.kolicina_troskovnik || 0).toFixed(3)}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Number"><Data ss:Type="Number">${(item.kolicina_troskovnik || 0).toFixed(3)}</Data></Cell>\n`;
             
             // Ukupno
             const ukupno = (item.cijena || 0) * (item.kolicina_troskovnik || 0);
-            htmlContent += `<td class="currency">€${ukupno.toFixed(2)}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Currency"><Data ss:Type="Number">${ukupno.toFixed(2)}</Data></Cell>\n`;
             
             // Dobavljač
-            htmlContent += `<td class="text">${escapeHTML(item.dobavljac || 'N/A')}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.dobavljac || 'N/A')}</Data></Cell>\n`;
             
             // Izvor
-            htmlContent += `<td class="text">${escapeHTML(item.izvor || 'N/A')}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.izvor || 'N/A')}</Data></Cell>\n`;
             
             // Enhanced
             const isEnhanced = item.calculation_source === 'enhanced_results' ? 'Da' : 'Ne';
-            htmlContent += `<td class="text">${isEnhanced}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${isEnhanced}</Data></Cell>\n`;
             
             // Formula cijene
-            htmlContent += `<td class="text">${escapeHTML(item.price_formula || 'N/A')}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.price_formula || 'N/A')}</Data></Cell>\n`;
             
             // Težina
-            htmlContent += `<td class="number">${(item.weight_used || 0).toFixed(3)}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Number"><Data ss:Type="Number">${(item.weight_used || 0).toFixed(3)}</Data></Cell>\n`;
             
             // VPC/kg
-            htmlContent += `<td class="currency">€${(item.price_per_kg || 0).toFixed(2)}</td>\n`;
+            xmlContent += `<Cell ss:StyleID="Currency"><Data ss:Type="Number">${(item.price_per_kg || 0).toFixed(2)}</Data></Cell>\n`;
             
-            htmlContent += '</tr>\n';
+            xmlContent += '</Row>\n';
         });
         
-        htmlContent += '</table>\n';
-        htmlContent += '</body>\n';
-        htmlContent += '</html>\n';
+        xmlContent += '</Table>\n';
+        xmlContent += '</Worksheet>\n';
+        xmlContent += '</Workbook>\n';
         
-        // Create and download HTML file that Excel can open
-        const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        // Create and download Excel XML file
+        const blob = new Blob([xmlContent], { type: 'application/xml;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-        const filename = `Enhanced_Tablica_Rabata_${timestamp}.xls`;  // .xls extension for Excel compatibility
+        // Generate filename using tender header data with proper .xml extension
+        const filenames = generateTenderFilenames('Rabata', 'xml');
+        const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Rabata.xml`;
         a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
         
-        // Show success message (identical to Excel export)
+        // Show success message
         showMessage('success', 
-            `✅ Enhanced Excel tablica rabata exportana!\n` +
+            `✅ Excel XML tablica rabata exportana!\n` +
             `📁 Datoteka: ${filename}\n` +
             `📊 Stavki: ${tablicaRabata.length}\n` +
             `⚡ Enhanced stavki: ${enhancedCount}\n` +
             `💰 Ukupna vrijednost: €${totalValue.toFixed(2)}\n` +
             `🎯 S direktno unesenim cijenama iz autocomplete\n` +
-            `💡 HTML format - otvorit će se direktno u Excelu kao tablica!`, 
+            `💡 Excel XML format - ERP kompatibilan!`, 
             'tablicaRabataStatus'
         );
         
     } catch (error) {
-        console.error('❌ Excel export error:', error);
-        alert(`Greška pri Excel exportu: ${error.message}`);
+        console.error('❌ XML export error:', error);
+        alert(`Greška pri XML exportu: ${error.message}`);
     }
 }
 

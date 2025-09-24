@@ -11,9 +11,13 @@ let currentSortColumn = null;
 let currentSortDirection = 'asc';
 let weightsSearchFilter = ''; // Search filter for weights table
 
+// 🆕 NEW: Global kupci (customers) database
+let kupciDatabase = new Map(); // Map: sifra -> kupac object
+let kupciTableData = []; // Array of customer objects for search/display
+
 // Configuration
 const WEIGHT_CONFIG = {
-    GOOGLE_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzirDW4yrVeqxrH3Y0UN-zDUKEeKMfA9PWUC9hnrBri8Kvb4ZUS1Gm68FArxho0C54X-g/exec',
+    GOOGLE_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzligLDbs8WoqPJ2codityGZeZIHMiwLWWHEI6N-ysVXlv17hPhm3cnR9QMM43huoR6yA/exec',
     SHEET_NAME: 'artiklitezine',
     RETRY_ATTEMPTS: 3,
     RETRY_DELAY: 1000
@@ -48,29 +52,45 @@ function getArticleWeightAndPDV(code, name, unit, source) {
     let tarifniBroj = '';
     let pdvStopa = 0;
     
+    // DEBUGGING: Add detailed logging for proslogodisnje lookups
+    const debugKey = `sifra-${code}`;
+    console.log(`🔍 LOOKUP: getArticleWeightAndPDV called for ${debugKey}`);
+    console.log(`🔍 Parameters: code="${code}", name="${name?.substring(0, 30)}", unit="${unit}", source="${source}"`);
+    console.log(`🔍 weightDatabase.has(${code}):`, weightDatabase.has(code));
+    
     // If šifra exists in database, use it
     if (code && weightDatabase.has(code)) {
         weight = weightDatabase.get(code);
+        console.log(`🔍 Found weight in database: ${code} → ${weight}kg`);
         
         // Get PDV data from weightTableData
         const weightData = weightTableData.find(item => item.sifra === code);
         if (weightData) {
             tarifniBroj = weightData.tarifniBroj || '';
             pdvStopa = weightData.pdvStopa || 0;
+            console.log(`🔍 Found PDV data: TB="${tarifniBroj}", PDV=${pdvStopa}%`);
+        } else {
+            console.log(`🔍 No PDV data found in weightTableData for ${code}`);
         }
         
-        // // console.log(`🎯 Database data for ${code}: ${weight}kg, TB: ${tarifniBroj}, PDV: ${pdvStopa}%`);
+        console.log(`🎯 Database data for ${code}: ${weight}kg, TB: ${tarifniBroj}, PDV: ${pdvStopa}%`);
     } else {
+        console.log(`🔍 Code ${code} NOT found in weightDatabase`);
+        console.log(`🔍 weightDatabase keys sample:`, Array.from(weightDatabase.keys()).slice(0, 5));
+        
         // Fallback to parsing
         weight = window.extractWeight ? window.extractWeight(name, unit) : 0;
-        // // console.log(`📝 Parsed weight for ${code}: ${weight}kg (no PDV data)`);
+        console.log(`📝 Parsed weight for ${code}: ${weight}kg (no PDV data)`);
     }
     
-    return {
+    const result = {
         weight: weight,
         tarifniBroj: tarifniBroj,
         pdvStopa: pdvStopa
     };
+    
+    console.log(`🔍 Final result for ${code}:`, result);
+    return result;
 }
 
 /**
@@ -312,7 +332,12 @@ function processGoogleSheetsData(articles) {
             if (article.code && weightDatabase.has(article.code)) {
                 const dbWeight = weightDatabase.get(article.code);
                 article.weight = dbWeight;
-                article.calculatedWeight = dbWeight;
+                // IMPORTANT: Don't overwrite calculatedWeight if user has modified it manually
+                if (!article.calculatedWeight || article.calculatedWeight === 0) {
+                    article.calculatedWeight = dbWeight;
+                } else {
+                    console.log(`🔄 Preserving user calculatedWeight for ${article.code}: ${article.calculatedWeight}kg (force update)`);
+                }
                 
                 if (dbWeight > 0 && article.price > 0) {
                     article.pricePerKg = Math.round((article.price / dbWeight) * 100) / 100;
@@ -328,6 +353,25 @@ function processGoogleSheetsData(articles) {
     
     // Update Google Sheets status
     updateGoogleSheetsStatus(true);
+    
+    // 🆕 NEW: Auto-load kupci when loading articles
+    if (processedCount > 0) {
+        // Try to load customers in background
+        setTimeout(() => {
+            if (window.initializeKupciFromGoogleSheets) {
+                console.log('🏢 Auto-loading customers from Google Sheets...');
+                window.initializeKupciFromGoogleSheets()
+                    .then(result => {
+                        if (result) {
+                            console.log('✅ Customers auto-loaded successfully');
+                        }
+                    })
+                    .catch(error => {
+                        console.warn('⚠️ Auto-load customers failed (non-critical):', error.message);
+                    });
+            }
+        }, 2000);
+    }
     
     // Start auto-refresh if weights were loaded
     if (processedCount > 0) {
@@ -360,7 +404,183 @@ function processGoogleSheetsData(articles) {
         );
     }
     
+    // Refresh troškovnik colors after loading weights to show correct article type colors
+    if (typeof window.refreshTroskovnikColors === 'function') {
+        window.refreshTroskovnikColors();
+        console.log('🎨 Troškovnik colors refreshed after Google Sheets load');
+    }
+    
     console.log('🔥🔥🔥 JEBENI DEBUG: processGoogleSheetsData ZAVRŠAVA USPJEŠNO!');
+}
+
+/**
+ * 🆕 NEW: KUPCI (CUSTOMERS) FUNCTIONS
+ */
+
+/**
+ * Load customers from Google Sheets
+ */
+async function loadKupciFromGoogleSheets() {
+    try {
+        console.log('🏢 Loading customers from Google Sheets...');
+        
+        const response = await fetch(`${WEIGHT_CONFIG.GOOGLE_SCRIPT_URL}?action=getKupci`, {
+            method: 'GET',
+            mode: 'cors'
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error || 'Unknown error loading customers');
+        }
+        
+        const kupci = result.kupci || [];
+        console.log(`📊 Received ${kupci.length} customers from Google Sheets`);
+        
+        // Process and store customers
+        processKupciData(kupci);
+        
+        return {
+            success: true,
+            message: `Successfully loaded ${kupci.length} customers from Google Sheets`,
+            count: kupci.length
+        };
+        
+    } catch (error) {
+        console.error('❌ Error loading customers from Google Sheets:', error);
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
+/**
+ * Process customers data and update databases
+ */
+function processKupciData(kupciData) {
+    console.log('🔄 Processing customers data...');
+    
+    // Clear existing data
+    kupciDatabase.clear();
+    kupciTableData.length = 0;
+    
+    let processedCount = 0;
+    let skippedCount = 0;
+    
+    kupciData.forEach((kupac, index) => {
+        try {
+            if (!kupac.sifra || !kupac.naziv) {
+                skippedCount++;
+                return;
+            }
+            
+            // Fix Croatian character encoding issues
+            const fixedNaziv = typeof fixCroatianEncoding === 'function' ? 
+                fixCroatianEncoding(kupac.naziv) : kupac.naziv;
+            
+            // Create fixed customer object
+            const fixedKupac = {
+                ...kupac,
+                naziv: fixedNaziv
+            };
+            
+            // Store in Map for O(1) access
+            kupciDatabase.set(kupac.sifra, fixedKupac);
+            
+            // Store in array for search/display
+            kupciTableData.push({
+                sifra: kupac.sifra,
+                naziv: fixedNaziv,
+                searchText: kupac.searchText || `${kupac.sifra} ${fixedNaziv}`.toLowerCase()
+            });
+            
+            processedCount++;
+            
+        } catch (error) {
+            console.error(`❌ Error processing customer ${index}:`, error);
+            skippedCount++;
+        }
+    });
+    
+    console.log(`✅ Processed customers: ${processedCount}, Skipped: ${skippedCount}, Total DB: ${kupciDatabase.size}`);
+    
+    // Update stats
+    updateKupciStats();
+}
+
+/**
+ * Search customers by partial name or code
+ * Enhanced to support partial word matching (e.g., "BOL ZAD" → "BOLNICA ZADAR")
+ */
+function searchKupci(query) {
+    if (!query || query.trim().length < 2) {
+        return kupciTableData.slice(0, 10); // Return first 10 if no query
+    }
+    
+    const searchTerm = query.toLowerCase().trim();
+    
+    // Split search term into individual words for partial matching
+    const searchWords = searchTerm.split(/\s+/).filter(word => word.length > 1);
+    
+    return kupciTableData.filter(kupac => {
+        const lowerNaziv = kupac.naziv.toLowerCase();
+        const lowerSifra = kupac.sifra.toLowerCase();
+        const searchText = kupac.searchText;
+        
+        // Standard full-text search (existing functionality)
+        const standardMatch = searchText.includes(searchTerm) ||
+                             lowerSifra.includes(searchTerm) ||
+                             lowerNaziv.includes(searchTerm);
+        
+        // Enhanced partial word search
+        const partialWordMatch = searchWords.length > 1 && 
+                               searchWords.every(word => 
+                                   lowerNaziv.includes(word) || lowerSifra.includes(word)
+                               );
+        
+        return standardMatch || partialWordMatch;
+    })
+    .sort((a, b) => {
+        // Prioritize exact matches, then partial word matches
+        const aLower = a.naziv.toLowerCase();
+        const bLower = b.naziv.toLowerCase();
+        
+        const aExact = aLower.includes(searchTerm);
+        const bExact = bLower.includes(searchTerm);
+        
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+        
+        // Sort alphabetically if both are exact or both are partial
+        return aLower.localeCompare(bLower);
+    })
+    .slice(0, 20); // Limit to 20 results
+}
+
+/**
+ * Get customer by code
+ */
+function getKupacBySifra(sifra) {
+    return kupciDatabase.get(sifra);
+}
+
+/**
+ * Update customer statistics
+ */
+function updateKupciStats() {
+    // Update any UI elements showing customer count
+    const countElement = document.getElementById('kupciCount');
+    if (countElement) {
+        countElement.textContent = kupciDatabase.size;
+    }
+    
+    console.log(`📊 Customer database updated: ${kupciDatabase.size} customers`);
 }
 
 /**
@@ -618,7 +838,12 @@ function processWeightFile(file) {
                     if (article.code && weightDatabase.has(article.code)) {
                         const dbWeight = weightDatabase.get(article.code);
                         article.weight = dbWeight;
-                        article.calculatedWeight = dbWeight;
+                        // IMPORTANT: Don't overwrite calculatedWeight if user has modified it manually
+                        if (!article.calculatedWeight || article.calculatedWeight === 0) {
+                            article.calculatedWeight = dbWeight;
+                        } else {
+                            console.log(`🔄 Preserving user calculatedWeight for ${article.code}: ${article.calculatedWeight}kg (CSV force update)`);
+                        }
                         
                         if (dbWeight > 0 && article.price > 0) {
                             article.pricePerKg = Math.round((article.price / dbWeight) * 100) / 100;
@@ -1087,6 +1312,81 @@ async function updateWeightValue(sifra, newValue) {
 }
 
 /**
+ * Update existing results with weights and PDV data
+ */
+function updateExistingResultsWithWeights() {
+    if (!window.results || window.results.length === 0) {
+        console.log('🔄 No results to update');
+        return { updatedCount: 0, pdvUpdatedCount: 0, zeroWeightCount: 0 };
+    }
+    
+    let resultsUpdatedCount = 0;
+    let resultsPdvUpdatedCount = 0;
+    let resultsZeroWeightCount = 0;
+    
+    console.log('🔄 DEBUGGING: Updating window.results array with new weights...');
+    console.log('🔄 window.results length:', window.results.length);
+    console.log('🔄 weightDatabase size:', weightDatabase.size);
+    console.log('🔄 First 3 results:', window.results.slice(0, 3).map(r => ({ code: r.code, name: r.name?.substring(0, 20) })));
+    
+    window.results.forEach((result, index) => {
+        if (result.code) {
+            console.log(`🔄 Processing result ${index + 1}: code="${result.code}", name="${result.name?.substring(0, 30)}"`);
+            
+            const data = getArticleWeightAndPDV(result.code, result.name, result.unit, result.source);
+            console.log(`🔄 Weight data for result ${result.code}:`, data);
+            
+            if (data.weight >= 0) {
+                console.log(`🔄 Setting weight ${data.weight} for result ${result.code}`);
+                result.weight = data.weight;
+                // IMPORTANT: Don't overwrite calculatedWeight if user has modified it manually
+                // Check for hasUserWeight flag or non-zero calculatedWeight values  
+                if (!result.hasUserWeight && (!result.calculatedWeight || result.calculatedWeight === 0)) {
+                    result.calculatedWeight = data.weight;
+                    console.log(`🔄 Set calculatedWeight for ${result.code}: ${data.weight}kg (was empty)`);
+                } else if (result.hasUserWeight) {
+                    console.log(`🔄 Preserving USER calculatedWeight for ${result.code}: ${result.calculatedWeight}kg (hasUserWeight=true, database has ${data.weight}kg)`);
+                } else {
+                    console.log(`🔄 Preserving existing calculatedWeight for ${result.code}: ${result.calculatedWeight}kg (database has ${data.weight}kg)`);
+                }
+                
+                // Preserve user-entered price but recalculate price per kg
+                if (data.weight > 0 && result.price > 0) {
+                    result.pricePerKg = Math.round((result.price / data.weight) * 100) / 100;
+                    console.log(`🔄 Calculated pricePerKg for ${result.code}: ${result.pricePerKg} €/kg`);
+                } else if (data.weight === 0) {
+                    result.pricePerKg = 0;
+                    resultsZeroWeightCount++;
+                    console.log(`🔄 Zero weight for ${result.code}`);
+                }
+                
+                resultsUpdatedCount++;
+            } else {
+                console.log(`🔄 NO weight data found for ${result.code}`);
+            }
+            
+            // Add PDV data to results
+            if (data.tarifniBroj) {
+                result.tarifniBroj = data.tarifniBroj;
+                result.pdvStopa = data.pdvStopa;
+                resultsPdvUpdatedCount++;
+                console.log(`🔄 PDV data for ${result.code}: TB=${data.tarifniBroj}, PDV=${data.pdvStopa}%`);
+            }
+        } else {
+            console.log(`🔄 Result ${index + 1} has no code:`, result);
+        }
+    });
+    
+    console.log(`🎯 Results updated: ${resultsUpdatedCount} weights (${resultsZeroWeightCount} with 0kg), ${resultsPdvUpdatedCount} PDV data`);
+    
+    return {
+        updatedCount: resultsUpdatedCount,
+        pdvUpdatedCount: resultsPdvUpdatedCount,
+        zeroWeightCount: resultsZeroWeightCount
+    };
+}
+
+/**
  * Update existing articles with weights AND PDV data
  */
 function updateExistingArticlesWithWeightsAndPDV() {
@@ -1102,7 +1402,14 @@ function updateExistingArticlesWithWeightsAndPDV() {
             
             if (data.weight >= 0) {
                 article.weight = data.weight;
-                article.calculatedWeight = data.weight;
+                // IMPORTANT: Don't overwrite calculatedWeight if user has modified it manually
+                // Only set calculatedWeight if it doesn't exist or is 0
+                if (!article.calculatedWeight || article.calculatedWeight === 0) {
+                    article.calculatedWeight = data.weight;
+                } else {
+                    // Preserve user-modified calculatedWeight
+                    console.log(`🔄 Preserving user calculatedWeight for article ${article.code}: ${article.calculatedWeight}kg (database has ${data.weight}kg)`);
+                }
                 
                 if (data.weight > 0 && article.price > 0) {
                     article.pricePerKg = Math.round((article.price / data.weight) * 100) / 100;
@@ -1123,12 +1430,25 @@ function updateExistingArticlesWithWeightsAndPDV() {
         }
     });
     
-    if (updatedCount > 0 || pdvUpdatedCount > 0) {
-        // // console.log(`Enhanced update: ${updatedCount} weights (${zeroWeightCount} with 0kg), ${pdvUpdatedCount} PDV data`);
+    // 🆕 NEW: Also update results array
+    const resultsStats = updateExistingResultsWithWeights();
+    
+    if (updatedCount > 0 || pdvUpdatedCount > 0 || resultsStats.updatedCount > 0) {
+        console.log(`🔄 Enhanced update: ${updatedCount} articles weights (${zeroWeightCount} with 0kg), ${pdvUpdatedCount} articles PDV data`);
+        console.log(`🔄 Results update: ${resultsStats.updatedCount} results weights, ${resultsStats.pdvUpdatedCount} results PDV data`);
         
         if (typeof updateArticleStats === 'function') updateArticleStats();
         if (typeof updateResultsDisplay === 'function') updateResultsDisplay();
         if (typeof updateTroskovnikDisplay === 'function') updateTroskovnikDisplay();
+        
+        // 🆕 EXPLICIT: Force update proslogodisnje display
+        console.log('🔄 Forcing explicit proslogodisnje display update...');
+        if (typeof window.updateProslogodisnjeCijeneDisplay === 'function') {
+            setTimeout(() => {
+                console.log('🔄 Calling updateProslogodisnjeCijeneDisplay in timeout...');
+                window.updateProslogodisnjeCijeneDisplay();
+            }, 100);
+        }
     }
 }
 
@@ -1381,6 +1701,16 @@ window.sortWeightTable = sortWeightTable;
 window.weightDatabase = weightDatabase;
 window.pdvDatabase = pdvDatabase;
 window.weightTableData = weightTableData;
+window.updateExistingResultsWithWeights = updateExistingResultsWithWeights;
+
+// 🆕 NEW: Expose kupci (customers) functions globally
+window.loadKupciFromGoogleSheets = loadKupciFromGoogleSheets;
+window.searchKupci = searchKupci;
+window.getKupacBySifra = getKupacBySifra;
+window.processKupciData = processKupciData;
+window.updateKupciStats = updateKupciStats;
+window.kupciDatabase = kupciDatabase;
+window.kupciTableData = kupciTableData;
 
 // Search functions
 window.handleWeightsSearch = handleWeightsSearch;

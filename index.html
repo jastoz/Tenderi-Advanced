@@ -6,6 +6,11 @@
     <title>Tražilica Proizvoda & Troškovnik - Enhanced s direktnim upravljanjem cijenama</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <!-- Google Drive API -->
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -492,15 +497,16 @@
             color: #7c2d12 !important; 
         }
         
-        /* State management buttons */
+        /* State management buttons - moved to header, not sticky */
         .state-buttons {
-            position: fixed;
-            top: 80px;
-            right: 20px;
             display: flex;
-            flex-direction: column;
-            gap: 8px;
-            z-index: 999;
+            align-items: center;
+            gap: 12px;
+            margin-top: 16px;
+            padding: 16px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
         }
         
         /* Responsive state buttons for wider screens */
@@ -585,27 +591,27 @@
             from { transform: translateX(100%); opacity: 0; }
             to { transform: translateX(0); opacity: 1; }
         }
+        
+        /* Remove spinner arrows from number inputs */
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
     </style>
 </head>
 <body>
-    <!-- State Management Buttons -->
-    <div class="state-buttons">
-        <button class="btn-state btn-quick-save" onclick="handleQuickSave()" title="Brzo spremi trenutno stanje">
-            💾 Quick Save
-        </button>
-        <button class="btn-state btn-save-as" onclick="handleSaveAs()" title="Spremi puno stanje aplikacije s timestampom">
-            📁 Save As (Full)
-        </button>
-        <button class="btn-state btn-save-minimal" onclick="handleSaveMinimal()" title="Spremi sve potrebne podatke za offline rad - bez artikala!">
-            🎯 Save Complete Data
-        </button>
-        <button class="btn-state btn-load-state" onclick="console.log('🔍 Load button clicked'); const input = document.getElementById('stateFileInput'); console.log('📁 Input element:', input); if(input) { console.log('✅ Calling input.click()'); input.click(); } else { console.log('❌ stateFileInput element not found!'); }" title="Učitaj spremljeno stanje">
-            📂 Load
-        </button>
-    </div>
-    
     <!-- Hidden file input for state loading -->
     <input type="file" id="stateFileInput" accept=".json" onchange="handleStateFileLoad(event)" style="display: none;">
+    
+    <!-- Hidden state buttons for keyboard shortcuts -->
+    <div style="display: none;">
+        <button class="btn-state btn-quick-save" onclick="handleQuickSave()" title="Brzo spremi trenutno stanje">💾 Quick Save</button>
+        <button class="btn-state btn-save-minimal" onclick="handleSaveMinimal()" title="Spremi sve potrebne podatke za offline rad - bez artikala!">🎯 Save Complete Data</button>
+    </div>
 
     <!-- Sticky Search Bar -->
     <div class="sticky-search-bar">
@@ -634,10 +640,49 @@
         <!-- Header -->
         <div class="header">
             <h1 class="title">🔍 ENHANCED Tražilica s direktnim upravljanjem cijenama</h1>
-            <div style="background: #e0e7ff; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px; color: #3730a3;">
-                <strong>🆕 NOVI WORKFLOW - Još kraći:</strong>
-                🥇 Prvi artikl: Upiši izlaznu cijenu + Enter → ide u troškovnik • 🥈 Ostali artikli: Samo Enter u prazno polje → automatski se dodaju • ⚡ Workflow skraćen na samo 2 koraka!
+            <!-- Prvi red sa osnovnim informacijama -->
+            <div style="display: flex; gap: 20px; margin-bottom: 16px; align-items: center;">
+                <div style="flex: 1;">
+                    <label style="display: block; font-size: 14px; font-weight: bold; margin-bottom: 6px; color: #374151;">
+                        👤 Naziv kupca:
+                    </label>
+                    <input type="text" id="nazivKupca" placeholder="Unesite naziv kupca..." 
+                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                </div>
+                <div style="flex: 0.6;">
+                    <label style="display: block; font-size: 14px; font-weight: bold; margin-bottom: 6px; color: #374151;">
+                        📅 Godina natječaja:
+                    </label>
+                    <select id="godinaNatjecaja" 
+                            style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 14px; background: white;">
+                        <option value="25/26">25/26</option>
+                        <option value="26/27">26/27</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label style="display: block; font-size: 14px; font-weight: bold; margin-bottom: 6px; color: #374151;">
+                        📦 Grupa proizvoda:
+                    </label>
+                    <input type="text" id="grupaProizvoda" placeholder="Unesite grupu proizvoda..." 
+                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                </div>
+                <div style="flex: 0.8;">
+                    <label style="display: block; font-size: 14px; font-weight: bold; margin-bottom: 6px; color: #374151;">
+                        📅 Datum predaje:
+                    </label>
+                    <input type="date" id="datumPredaje" 
+                           style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; font-size: 14px;">
+                </div>
             </div>
+            
+            <!-- Drugi red sa ZIP export botunom -->
+            <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 16px;">
+                <button class="btn btn-purple" onclick="handleExportCompleteTenderPackage()" 
+                        style="font-size: 16px; padding: 12px 24px; font-weight: bold; background: #7c3aed; border: none; color: white; border-radius: 8px; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    📦 Izvezi kompletni tender paket (ZIP)
+                </button>
+            </div>
+            
             <div style="margin-bottom: 16px; display: flex; gap: 24px; align-items: center;">
                 <label style="font-size: 15px; display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" id="rotoFilterCheckbox" checked onchange="window.setRotoFilterEnabled && window.setRotoFilterEnabled(this.checked)">
@@ -651,6 +696,33 @@
                     <input type="checkbox" id="latestPerCodeCheckbox" onchange="window.setLatestPerCodeEnabled && window.setLatestPerCodeEnabled(this.checked)">
                     ista šifra - najnoviji datum
                 </label>
+            </div>
+            
+            <!-- State Management Section -->
+            <div class="state-buttons">
+                <!-- Main Save/Load Controls -->
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <button class="btn-state btn-load-state" onclick="handleLoadState()" title="Učitaj spremljeno stanje" style="background: #0891b2; padding: 10px 16px; font-size: 14px; min-width: 200px;">
+                        📂 Učitaj stanje aplikacije
+                    </button>
+                    <button class="btn-state btn-save-as" onclick="saveAppState()" title="Spremi OPTIMIZIRANO stanje aplikacije" style="background: #7c3aed; padding: 10px 16px; font-size: 14px; min-width: 200px;">
+                        🚀 Spremi OPTIMIZIRANO stanje
+                    </button>
+                </div>
+                
+                <!-- Google Drive Status & Auth -->
+                <div style="margin-left: 24px; padding-left: 24px; border-left: 2px solid #d1d5db; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span id="googleDriveStatus" style="font-size: 12px; font-weight: bold; color: #6b7280;">❌ Nije povezano</span>
+                        <button id="googleDriveSignInBtn" class="btn-state" onclick="handleGoogleDriveSignIn()" style="display: none; font-size: 11px; padding: 4px 8px; background: #059669; min-width: auto;">
+                            🔑 Prijavite se
+                        </button>
+                        <button id="googleDriveSignOutBtn" class="btn-state" onclick="handleGoogleDriveSignOut()" style="display: none; font-size: 11px; padding: 4px 8px; background: #dc2626; min-width: auto;">
+                            🚪 Odjavite se
+                        </button>
+                    </div>
+                    <div id="googleDriveUserInfo" style="display: none; font-size: 11px; color: #6b7280;"></div>
+                </div>
             </div>
             
             <!-- Tabs -->
@@ -711,10 +783,13 @@
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <button class="btn btn-success" onclick="handleLoadDemoTroskovnik()">📊 Demo Troškovnik</button>
                         <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">📁 Upload Artikli</button>
-                        <button class="btn btn-google" onclick="handleGoogleSheetsImport()" style="background: #4285f4; color: white;">📊 Google Sheets</button>
+                        <button class="btn btn-google" onclick="handleGoogleSheetsImport()" style="background: #4285f4; color: white;">📊 Google Sheets Artikli</button>
+                        <button class="btn btn-google" onclick="handleLoadKupciFromGoogleSheets()" style="background: #7c3aed; color: white;">🏢 Google Sheets Kupci</button>
                         <button class="btn btn-purple" onclick="document.getElementById('troskovnikLoadInput').click()">📂 Učitaj troškovnik</button>
+                        <button class="btn btn-orange" onclick="document.getElementById('articlesOnlyLoadInput').click()">📊 Učitaj samo artikle</button>
                     </div>
                     <input type="file" id="troskovnikLoadInput" accept=".json" onchange="handleTroskovnikLoadSelect(event)" style="display: none;">
+                    <input type="file" id="articlesOnlyLoadInput" accept=".json" onchange="handleArticlesOnlyLoadSelect(event)" style="display: none;">
                 </div>
                 
                 <!-- Enhanced Search Tips -->
@@ -739,7 +814,6 @@
                     <h2>📊 Enhanced Troškovnik s Težinom</h2>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <button class="btn btn-primary" onclick="document.getElementById('troskovnikFileInput').click()">📁 Upload CSV/Excel</button>
-                        <button class="btn btn-purple" onclick="handleRefreshColors()">🎨 Refresh Colors</button>
                         <button class="btn btn-primary" onclick="handleGenerateWeights()" style="background: #f59e0b;">🧠 Generiraj težine</button>
                     </div>
                 </div>
@@ -767,7 +841,6 @@
                         </div>
                         <div style="display: flex; gap: 8px;">
                             <button class="btn btn-success" onclick="handleAddTroskovnikItem()" id="addTroskovnikBtn" style="display: none;">➕ Nova stavka</button>
-                            <button class="btn btn-primary" onclick="handleExportTroskovnikCSV()" id="exportTroskovnikCSVBtn" style="display: none;">📄 Export CSV</button>
                             <button class="btn btn-purple" onclick="handleExportTroskovnikExcel()" id="exportTroskovnikExcelBtn" style="display: none;">📊 Export Excel</button>
                             <button class="btn btn-success" onclick="saveTroskovnikOnly()" id="saveTroskovnikBtn" style="display: none;">💾 Spremi troškovnik</button>
                             <button class="btn btn-primary" onclick="handleClearTroskovnik()" id="clearTroskovnikBtn" style="display: none;">🗑️ Očisti sve</button>
@@ -841,8 +914,6 @@
                     <h2>📋 Tablica Rabata (Enhanced)</h2>
                     <div style="display: flex; gap: 8px;">
                         <button class="btn btn-success" onclick="handleGenerateFromResults()" id="generateFromResultsBtn">🎯 Generiraj iz rezultata</button>
-                        <button class="btn btn-primary" onclick="handleExportTablicaCSV()" id="exportTablicaRabataCSVBtn" style="display: none;">📄 Export CSV</button>
-                        <button class="btn btn-purple" onclick="handleExportTablicaExcel()" id="exportTablicaRabataExcelBtn" style="display: none;">📊 Export Excel</button>
                         <button class="btn btn-success" onclick="handleExportTablicaXML()" id="exportTablicaRabataXMLBtn" style="display: none;">🔄 Export XML</button>
                         <button class="btn btn-primary" onclick="handleClearTablica()" id="clearTablicaRabataBtn" style="display: none;">🗑️ Očisti sve</button>
                     </div>
@@ -875,15 +946,15 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2>📅 Prošlogodišnje cijene</h2>
                     <div style="display: flex; gap: 8px;">
-                        <button class="btn btn-primary" onclick="document.getElementById('proslogodisnjeCijeneFileInput').click()">📁 Upload tablicu rabata</button>
-                        <button class="btn btn-success" onclick="handleExportProslogodisnje()" id="exportProslogodisnjeCijeneBtn" style="display: none;">💾 Export CSV</button>
+                        <button class="btn btn-primary" onclick="document.getElementById('proslogodisnjeCijeneFileInput').click()">📁 Upload tablice rabata</button>
+                        <button class="btn btn-success" onclick="handleExportProslogodisnje()" id="exportProslogodisnjeCijeneBtn" style="display: none;">🔄 XML Export format</button>
                         <button class="btn btn-purple" onclick="handleClearProslogodisnje()" id="clearProslogodisnjeCijeneBtn" style="display: none;">🗑️ Očisti sve</button>
                     </div>
                 </div>
                 
-                <input type="file" id="proslogodisnjeCijeneFileInput" accept=".csv,.xlsx,.xls,.xml" onchange="handleProslogodisnjeCijeneFileSelect(event)" style="display: none;">
+                <input type="file" id="proslogodisnjeCijeneFileInput" accept=".csv,.xlsx,.xls,.xml" multiple onchange="handleProslogodisnjeCijeneFileSelect(event)" style="display: none;">
                 
-                <div id="proslogodisnjeCijeneUpload" class="hidden">
+                <div id="proslogodisnjeCijeneUpload">
                     <div class="upload-area"
                          onclick="document.getElementById('proslogodisnjeCijeneFileInput').click()"
                          ondragover="handleDragOver(event)"
@@ -891,9 +962,9 @@
                          ondrop="handleProslogodisnjeCijeneFileDrop(event)">
                         <div style="font-size: 48px; margin-bottom: 12px;">📅</div>
                         <div style="font-weight: 600; margin-bottom: 8px;">Upload prošlogodišnje tablice rabata</div>
-                        <div style="font-size: 14px; color: #6b7280;">CSV, Excel ili XML format</div>
+                        <div style="font-size: 14px; color: #6b7280;">Kliknite ili povucite datoteke ovdje (možete više odjednom)</div>
                         <div style="font-size: 12px; color: #9ca3af; margin-top: 8px;">
-                            Format: Šifra (A), Naziv (B), J.m (C), Cijena (D)
+                            🎯 Podržava: CSV, Excel (.xlsx/.xls), XML • Format: Šifra (A), Naziv (B), J.m (C), Cijena (D)
                         </div>
                     </div>
                 </div>
@@ -913,7 +984,7 @@
                     
                     <div class="info-msg" style="margin-bottom: 16px;">
                         <strong>📅 Prošlogodišnje cijene - orijentir za ovogodišnju nabavu:</strong><br>
-                        • Upload-ajte staru tablicu rabata ako ste s kupcem radili prošle godine<br>
+                        • Upload-ajte stare tablice rabata ako ste s kupcem radili prošle godine (možete više odjednom)<br>
                         • Format: Šifra (A), Naziv (B), J.m (C), Cijena (D)<br>
                         • Koristi se kao orijentir za određivanje izlaznih cijena u novom postupku nabave<br>
                         • Omogućava usporedbu cijena između godina i bolje planiranje ponuda
@@ -941,7 +1012,7 @@
                     <p>Upload-ajte staru tablicu rabata za orijentir u novom postupku nabave.</p>
                     <div class="info-msg" style="margin-top: 20px; text-align: left;">
                         <strong>📅 Kako koristiti prošlogodišnje cijene:</strong><br>
-                        1. Upload-ajte staru tablicu rabata iz prošle godine<br>
+                        1. Upload-ajte stare tablice rabata iz prošle godine (možete drag & drop više datoteka odjednom)<br>
                         2. Koristite podatke kao orijentir za određivanje novih cijena<br>
                         3. Usporedite prošle i trenutne cijene za bolju strategiju<br>
                         4. Format datoteke: Šifra (A), Naziv (B), J.m (C), Cijena (D)<br>
@@ -1055,6 +1126,7 @@
     <script src="data.js"></script>
     <script src="utils.js"></script>
     <script src="weight-manager.js"></script>
+    <script src="kupci-autocomplete.js"></script>
     <script src="enhanced-search.js"></script>
     <script src="enhanced-results.js"></script>
     <script src="enhanced-functions.js"></script>
@@ -1062,6 +1134,7 @@
     <script src="tablicarabata.js"></script>
     <script src="proslogodisnje-cijene.js"></script>
     <script src="ui.js"></script>
+    <script src="google-drive-manager.js"></script>
     <script src="state-manager.js"></script>
     <script src="app.js"></script>
 
@@ -1300,6 +1373,24 @@
             }
         }
         
+        // 🆕 NEW: Handle kupci loading from Google Sheets
+        function handleLoadKupciFromGoogleSheets() {
+            console.log('🏢 Starting Google Sheets kupci import...');
+            if (window.initializeKupciFromGoogleSheets) {
+                window.initializeKupciFromGoogleSheets().then(result => {
+                    if (result) {
+                        showMessage('success', 'Kupci uspješno učitani iz Google Sheets!', 'uploadStatus');
+                    } else {
+                        showMessage('error', 'Greška pri učitavanju kupaca iz Google Sheets', 'uploadStatus');
+                    }
+                }).catch(error => {
+                    showMessage('error', 'Greška pri učitavanju kupaca: ' + error.message, 'uploadStatus');
+                });
+            } else {
+                showMessage('error', 'Kupci funkcionalnost još se učitava...', 'uploadStatus');
+            }
+        }
+        
         function handleExportToGoogleSheets() {
             console.log('📤 Starting Google Sheets export...');
             if (window.exportWeightsToGoogleSheets) {
@@ -1496,6 +1587,84 @@
                 }
             }, 100);
         }
+
+        // === GOOGLE DRIVE FUNCTIONS ===
+        
+        async function handleGoogleDriveSignIn() {
+            try {
+                console.log('🔑 Google Drive sign in requested');
+                if (typeof signInToGoogleDrive === 'function') {
+                    await signInToGoogleDrive();
+                } else {
+                    showMessage('error', '❌ Google Drive funkcionalnost nije dostupna!');
+                }
+            } catch (error) {
+                console.error('❌ Google Drive sign in error:', error);
+                showMessage('error', `❌ Greška pri prijavi: ${error.message}`);
+            }
+        }
+        
+        async function handleGoogleDriveSignOut() {
+            try {
+                console.log('🚪 Google Drive sign out requested');
+                if (typeof signOutFromGoogleDrive === 'function') {
+                    await signOutFromGoogleDrive();
+                } else {
+                    showMessage('error', '❌ Google Drive funkcionalnost nije dostupna!');
+                }
+            } catch (error) {
+                console.error('❌ Google Drive sign out error:', error);
+                showMessage('error', `❌ Greška pri odjavi: ${error.message}`);
+            }
+        }
+        
+        async function handleSaveToDrive() {
+            try {
+                console.log('☁️ Save to Google Drive requested');
+                if (typeof saveStateToGoogleDrive === 'function') {
+                    await saveStateToGoogleDrive('full');
+                } else {
+                    showMessage('error', '❌ Google Drive funkcionalnost nije dostupna!');
+                }
+            } catch (error) {
+                console.error('❌ Save to Google Drive error:', error);
+                showMessage('error', `❌ Greška pri spremanju: ${error.message}`);
+            }
+        }
+        
+        async function handleLoadFromDrive() {
+            try {
+                console.log('☁️ Load from Google Drive requested');
+                if (typeof loadStateFromGoogleDrive === 'function') {
+                    await loadStateFromGoogleDrive();
+                } else {
+                    showMessage('error', '❌ Google Drive funkcionalnost nije dostupna!');
+                }
+            } catch (error) {
+                console.error('❌ Load from Google Drive error:', error);
+                showMessage('error', `❌ Greška pri učitavanju: ${error.message}`);
+            }
+        }
+        
+        function handleLoadState() {
+            try {
+                console.log('📂 Load state requested');
+                if (typeof loadAppState === 'function') {
+                    loadAppState(); // This will show the load options dialog
+                } else {
+                    // Fallback to old behavior
+                    const input = document.getElementById('stateFileInput');
+                    if (input) {
+                        input.click();
+                    } else {
+                        console.error('❌ stateFileInput element not found!');
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Load state error:', error);
+                showMessage('error', `❌ Greška pri učitavanju: ${error.message}`);
+            }
+        }
         
         // === TROŠKOVNIK FUNCTIONS ===
         function handleRefreshColors() {
@@ -1590,6 +1759,362 @@
             }
         }
         
+        // === TENDER PACKAGE ZIP EXPORT ===
+        async function handleExportCompleteTenderPackage() {
+            try {
+                if (!window.JSZip) {
+                    showMessage('error', 'JSZip biblioteka nije učitana!');
+                    return;
+                }
+                
+                // Check if header fields are filled
+                const nazivKupca = document.getElementById('nazivKupca')?.value;
+                const grupaProizvoda = document.getElementById('grupaProizvoda')?.value;
+                
+                if (!nazivKupca || !grupaProizvoda) {
+                    showMessage('error', 'Molimo unesite naziv kupca i grupu proizvoda prije export-a!');
+                    return;
+                }
+                
+                // Check if tablica rabata is generated
+                if (!window.tablicaRabata || tablicaRabata.length === 0) {
+                    const shouldGenerate = confirm('⚠️ VAŽNO: Tablica rabata nije generirana!\n\nŽelite li ju generirati sada iz rezultata pretrage?\n\n✅ DA - Generiraj tablicu rabata\n❌ NE - Nastavi bez tablice rabata');
+                    
+                    if (shouldGenerate) {
+                        // Try to generate tablica rabata from results
+                        if (typeof generateFromResults === 'function') {
+                            try {
+                                generateFromResults();
+                                showMessage('success', '✅ Tablica rabata je generirana iz rezultata!');
+                            } catch (error) {
+                                showMessage('error', 'Greška pri generiranju tablice rabata: ' + error.message);
+                                return;
+                            }
+                        } else {
+                            showMessage('error', 'Funkcija za generiranje tablice rabata nije dostupna!');
+                            return;
+                        }
+                    }
+                }
+                
+                showMessage('info', '📦 Priprema tender paketa...', 'generalStatus');
+                
+                const zip = new JSZip();
+                const filenames = generateTenderFilenames('', '');
+                
+                // 1. Add state file (JSON)
+                try {
+                    const state = serializeMinimalState();
+                    const stateFilename = generateTenderFilenames('Stanje', 'json');
+                    zip.file(stateFilename.internalName, JSON.stringify(state, null, 2));
+                    showMessage('info', '✅ Stanje aplikacije dodano', 'generalStatus');
+                } catch (error) {
+                    console.error('Error creating state file:', error);
+                    showMessage('error', 'Greška pri kreiranju stanja aplikacije');
+                    return;
+                }
+                
+                // 2. Add troskovnik Excel file
+                if (window.troskovnik && troskovnik.length > 0) {
+                    try {
+                        const troskovnikBlob = await generateTroskovnikExcelBlob();
+                        if (troskovnikBlob) {
+                            const troskovnikFilename = generateTenderFilenames('Troskovnik', 'xlsx');
+                            zip.file(troskovnikFilename.internalName, troskovnikBlob);
+                            showMessage('info', '✅ Troškovnik dodan', 'generalStatus');
+                        }
+                    } catch (error) {
+                        console.error('Error creating troskovnik Excel:', error);
+                        showMessage('warning', '⚠️ Troškovnik preskočen (greška)');
+                    }
+                } else {
+                    showMessage('warning', '⚠️ Troškovnik prazan - preskočen');
+                }
+                
+                // 3. Add tablica rabata XML file  
+                if (window.tablicaRabata && tablicaRabata.length > 0) {
+                    try {
+                        const rabataXML = generateTablicaRabataXML();
+                        if (rabataXML) {
+                            const rabataFilename = generateTenderFilenames('Rabata', 'xml');
+                            zip.file(rabataFilename.internalName, rabataXML);
+                            showMessage('info', '✅ Tablica rabata dodana', 'generalStatus');
+                        }
+                    } catch (error) {
+                        console.error('Error creating tablica rabata XML:', error);
+                        showMessage('warning', '⚠️ Tablica rabata preskočena (greška)');
+                    }
+                } else {
+                    showMessage('warning', '⚠️ Tablica rabata prazna - preskočena');
+                }
+                
+                // Generate and download ZIP
+                showMessage('info', '📦 Generiranje ZIP datoteke...', 'generalStatus');
+                const zipBlob = await zip.generateAsync({type: 'blob'});
+                
+                // Download ZIP file
+                const url = URL.createObjectURL(zipBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filenames.zipName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                showMessage('success', `🎉 Tender paket izvezen: ${filenames.zipName}`, 'generalStatus');
+                
+            } catch (error) {
+                console.error('ZIP export error:', error);
+                showMessage('error', `Greška pri export-u ZIP datoteke: ${error.message}`);
+            }
+        }
+        
+        // Helper function to generate troskovnik Excel blob
+        async function generateTroskovnikExcelBlob() {
+            if (!window.exportTroskovnikExcel) {
+                return null;
+            }
+            
+            // We need to temporarily override the XLSX.writeFile function to capture the blob
+            const originalWriteFile = XLSX.writeFile;
+            let capturedBlob = null;
+            
+            XLSX.writeFile = function(workbook, filename) {
+                capturedBlob = XLSX.write(workbook, {bookType: 'xlsx', type: 'array'});
+                return new Blob([capturedBlob], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+            };
+            
+            try {
+                const result = window.exportTroskovnikExcel();
+                return new Blob([capturedBlob], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+            } finally {
+                // Restore original function
+                XLSX.writeFile = originalWriteFile;
+            }
+        }
+        
+        // Helper function to generate Excel XML content for tablica rabata (for ZIP export)
+        function generateTablicaRabataXML() {
+            if (!window.tablicaRabata || tablicaRabata.length === 0) {
+                return null;
+            }
+            
+            try {
+                // Use the same Excel XML format as the standalone export
+                let xmlContent = '<?xml version="1.0" encoding="UTF-8"?>\n';
+                xmlContent += '<?mso-application progid="Excel.Sheet"?>\n';
+                xmlContent += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"\n';
+                xmlContent += ' xmlns:o="urn:schemas-microsoft-com:office:office"\n';
+                xmlContent += ' xmlns:x="urn:schemas-microsoft-com:office:excel"\n';
+                xmlContent += ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"\n';
+                xmlContent += ' xmlns:html="http://www.w3.org/TR/REC-html40">\n';
+                
+                // DocumentProperties
+                xmlContent += '<DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">\n';
+                xmlContent += '<Title>Enhanced Tablica Rabata</Title>\n';
+                xmlContent += '<Subject>Tablica rabata export</Subject>\n';
+                xmlContent += '<Author>Tražilica Proizvoda</Author>\n';
+                xmlContent += '<Created>' + new Date().toISOString() + '</Created>\n';
+                xmlContent += '</DocumentProperties>\n';
+                
+                // Styles (same as standalone export)
+                xmlContent += '<Styles>\n';
+                xmlContent += '<Style ss:ID="Default" ss:Name="Normal">\n';
+                xmlContent += '<Alignment ss:Vertical="Bottom"/>\n';
+                xmlContent += '<Borders/>\n';
+                xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>\n';
+                xmlContent += '<Interior/>\n';
+                xmlContent += '<NumberFormat/>\n';
+                xmlContent += '<Protection/>\n';
+                xmlContent += '</Style>\n';
+                
+                // Header style
+                xmlContent += '<Style ss:ID="Header">\n';
+                xmlContent += '<Alignment ss:Horizontal="Center" ss:Vertical="Bottom"/>\n';
+                xmlContent += '<Borders>\n';
+                xmlContent += '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '</Borders>\n';
+                xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#FFFFFF" ss:Bold="1"/>\n';
+                xmlContent += '<Interior ss:Color="#4472C4" ss:Pattern="Solid"/>\n';
+                xmlContent += '</Style>\n';
+                
+                // Currency style
+                xmlContent += '<Style ss:ID="Currency">\n';
+                xmlContent += '<Alignment ss:Horizontal="Right" ss:Vertical="Bottom"/>\n';
+                xmlContent += '<Borders>\n';
+                xmlContent += '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '</Borders>\n';
+                xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>\n';
+                xmlContent += '<NumberFormat ss:Format="&quot;€&quot;#,##0.00"/>\n';
+                xmlContent += '</Style>\n';
+                
+                // Number style
+                xmlContent += '<Style ss:ID="Number">\n';
+                xmlContent += '<Alignment ss:Horizontal="Right" ss:Vertical="Bottom"/>\n';
+                xmlContent += '<Borders>\n';
+                xmlContent += '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '</Borders>\n';
+                xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>\n';
+                xmlContent += '<NumberFormat ss:Format="#,##0.000"/>\n';
+                xmlContent += '</Style>\n';
+                
+                // Text style
+                xmlContent += '<Style ss:ID="Text">\n';
+                xmlContent += '<Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>\n';
+                xmlContent += '<Borders>\n';
+                xmlContent += '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '</Borders>\n';
+                xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#000000"/>\n';
+                xmlContent += '</Style>\n';
+                
+                // Missing RB style (yellow background)
+                xmlContent += '<Style ss:ID="MissingRB">\n';
+                xmlContent += '<Alignment ss:Horizontal="Left" ss:Vertical="Bottom"/>\n';
+                xmlContent += '<Borders>\n';
+                xmlContent += '<Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '<Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/>\n';
+                xmlContent += '</Borders>\n';
+                xmlContent += '<Font ss:FontName="Calibri" x:Family="Swiss" ss:Size="11" ss:Color="#FF0000" ss:Bold="1"/>\n';
+                xmlContent += '<Interior ss:Color="#FFEB3B" ss:Pattern="Solid"/>\n';
+                xmlContent += '</Style>\n';
+                
+                xmlContent += '</Styles>\n';
+                
+                // Worksheet
+                xmlContent += '<Worksheet ss:Name="Tablica Rabata">\n';
+                xmlContent += '<Table>\n';
+                
+                // Define column widths (same as standalone export)
+                xmlContent += '<Column ss:Width="80"/>\n';  // Šifra artikla
+                xmlContent += '<Column ss:Width="200"/>\n'; // Naziv artikla
+                xmlContent += '<Column ss:Width="40"/>\n';  // J.M.
+                xmlContent += '<Column ss:Width="80"/>\n';  // Cijena za tab.
+                xmlContent += '<Column ss:Width="60"/>\n';  // RB Grupe
+                xmlContent += '<Column ss:Width="200"/>\n'; // Naziv stavke u troškovniku
+                xmlContent += '<Column ss:Width="80"/>\n';  // J.M. troškovnik
+                xmlContent += '<Column ss:Width="80"/>\n';  // Količina
+                xmlContent += '<Column ss:Width="80"/>\n';  // Ukupno
+                xmlContent += '<Column ss:Width="120"/>\n'; // Dobavljač
+                xmlContent += '<Column ss:Width="60"/>\n';  // Izvor
+                xmlContent += '<Column ss:Width="70"/>\n';  // Enhanced
+                xmlContent += '<Column ss:Width="120"/>\n'; // Formula cijene
+                xmlContent += '<Column ss:Width="80"/>\n';  // Težina
+                xmlContent += '<Column ss:Width="80"/>\n';  // VPC/kg
+                
+                // Header row
+                const headers = [
+                    'Šifra artikla', 'Naziv artikla', 'J.M.', 'Cijena za tab. (€)',
+                    'RB Grupe', 'Naziv stavke u troškovniku', 'J.M. troškovnik', 'Količina', 
+                    'Ukupno (€)', 'Dobavljač', 'Izvor', 'Enhanced', 'Formula cijene', 'Težina (kg)', 'VPC/kg (€)'
+                ];
+                
+                xmlContent += '<Row>\n';
+                headers.forEach(header => {
+                    xmlContent += `<Cell ss:StyleID="Header"><Data ss:Type="String">${escapeXML(header)}</Data></Cell>\n`;
+                });
+                xmlContent += '</Row>\n';
+                
+                // Add missing RB numbers row (equivalent to G1 in Excel)
+                if (typeof getMissingRBString === 'function') {
+                    const missingRBs = getMissingRBString();
+                    if (missingRBs) {
+                        xmlContent += '<Row>\n';
+                        xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String">NEDOSTAJU</Data></Cell>\n'; // A
+                        xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String">RB BROJEVI</Data></Cell>\n'; // B
+                        xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String">IZ</Data></Cell>\n'; // C
+                        xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String">TROŠKOVNIKA:</Data></Cell>\n'; // D
+                        xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String"></Data></Cell>\n'; // E
+                        xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String"></Data></Cell>\n'; // F
+                        xmlContent += `<Cell ss:StyleID="MissingRB"><Data ss:Type="String">${escapeXML(missingRBs)}</Data></Cell>\n`; // G
+                        // Fill remaining columns
+                        for (let i = 7; i < headers.length; i++) {
+                            xmlContent += '<Cell ss:StyleID="MissingRB"><Data ss:Type="String"></Data></Cell>\n';
+                        }
+                        xmlContent += '</Row>\n';
+                    }
+                }
+                
+                // Data rows (same structure as standalone export)
+                tablicaRabata.forEach(item => {
+                    xmlContent += '<Row>\n';
+                    
+                    // Šifra artikla
+                    xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.sifra_artikla || '')}</Data></Cell>\n`;
+                    
+                    // Naziv artikla
+                    xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.naziv_artikla || '')}</Data></Cell>\n`;
+                    
+                    // J.M.
+                    xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.jedinica_mjere || '')}</Data></Cell>\n`;
+                    
+                    // Cijena za tab.
+                    xmlContent += `<Cell ss:StyleID="Currency"><Data ss:Type="Number">${(item.cijena || 0).toFixed(2)}</Data></Cell>\n`;
+                    
+                    // RB Grupe
+                    xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.redni_broj_grupe || '')}</Data></Cell>\n`;
+                    
+                    // Naziv stavke u troškovniku
+                    xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.naziv_stavke_troskovnik || '')}</Data></Cell>\n`;
+                    
+                    // J.M. troškovnik
+                    xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.jedinica_mjere_troskovnik || '')}</Data></Cell>\n`;
+                    
+                    // Količina
+                    xmlContent += `<Cell ss:StyleID="Number"><Data ss:Type="Number">${(item.kolicina_troskovnik || 0).toFixed(3)}</Data></Cell>\n`;
+                    
+                    // Ukupno
+                    const ukupno = (item.cijena || 0) * (item.kolicina_troskovnik || 0);
+                    xmlContent += `<Cell ss:StyleID="Currency"><Data ss:Type="Number">${ukupno.toFixed(2)}</Data></Cell>\n`;
+                    
+                    // Dobavljač
+                    xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.dobavljac || 'N/A')}</Data></Cell>\n`;
+                    
+                    // Izvor
+                    xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.izvor || 'N/A')}</Data></Cell>\n`;
+                    
+                    // Enhanced
+                    const isEnhanced = item.calculation_source === 'enhanced_results' ? 'Da' : 'Ne';
+                    xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${isEnhanced}</Data></Cell>\n`;
+                    
+                    // Formula cijene
+                    xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.price_formula || 'N/A')}</Data></Cell>\n`;
+                    
+                    // Težina
+                    xmlContent += `<Cell ss:StyleID="Number"><Data ss:Type="Number">${(item.weight_used || 0).toFixed(3)}</Data></Cell>\n`;
+                    
+                    // VPC/kg
+                    xmlContent += `<Cell ss:StyleID="Currency"><Data ss:Type="Number">${(item.price_per_kg || 0).toFixed(2)}</Data></Cell>\n`;
+                    
+                    xmlContent += '</Row>\n';
+                });
+                
+                xmlContent += '</Table>\n';
+                xmlContent += '</Worksheet>\n';
+                xmlContent += '</Workbook>\n';
+                
+                return xmlContent;
+                
+            } catch (error) {
+                console.error('Error generating XML for ZIP:', error);
+                return null;
+            }
+        }
+        
         // === WEIGHTS FUNCTIONS ===
         function handleApplyWeights() {
             if (window.applyWeightsToArticles) {
@@ -1669,11 +2194,11 @@
                     '• Range se odnosi na težinu u gramima\n\n' +
                     '💾 SPREMANJE/UČITAVANJE:\n' +
                     '• Ctrl+S - Brzo spremi stanje\n' +
-                    '• Ctrl+Shift+S - Spremi sve (kompletno stanje)\n' +
+                    '• Ctrl+Shift+S - Spremi OPTIMIZIRANO (95%+ manje)\n' +
                     '• Ctrl+T - Spremi samo troškovnik (manja datoteka)\n' +
                     '• Ctrl+O - Učitaj stanje iz datoteke\n' +
                     '• 💾 Spremi troškovnik - Samo troškovnik (manja datoteka)\n' +
-                    '• 💾 Spremi sve - Kompletno stanje aplikacije\n\n' +
+                    '• 🚀 Spremi OPTIMIZIRANO - Samo korisni podaci (95%+ manje)\n\n' +
                     '🆕 NOVA FUNKCIONALNOST:\n' +
                     '• 🏠 Naši artikli (LAGER/URPD): Samo cijenu, automatska težina\n' +
                     '• 🌍 Tuđi artikli: Cijena + težina, validacija\n' +
@@ -1726,6 +2251,13 @@
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🚀 Starting Enhanced Application with direct price management...');
             
+            // Set default date for datum predaje
+            const datumPredajeInput = document.getElementById('datumPredaje');
+            if (datumPredajeInput && !datumPredajeInput.value) {
+                const today = new Date();
+                datumPredajeInput.value = today.toISOString().slice(0, 10);
+            }
+            
             // OPTIMIZED STICKY SEARCH BAR ENFORCEMENT
             optimizedStickySearchBar();
             
@@ -1748,6 +2280,20 @@
                     showMessage('error', '❌ KRITIČNA GREŠKA: State management nije učitan! Quick Save i Save As neće raditi!');
                 } else {
                     console.log('✅ State management loaded successfully');
+                }
+                
+                // Initialize Google Drive API
+                if (typeof initializeGoogleDrive === 'function') {
+                    console.log('🔄 Initializing Google Drive API...');
+                    initializeGoogleDrive().then(success => {
+                        if (success) {
+                            console.log('✅ Google Drive API initialized successfully');
+                        } else {
+                            console.warn('⚠️ Google Drive API initialization failed (non-critical)');
+                        }
+                    });
+                } else {
+                    console.warn('⚠️ Google Drive functions not available');
                 }
             }, 200);
             
