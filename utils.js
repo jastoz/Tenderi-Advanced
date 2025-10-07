@@ -20,7 +20,7 @@ function generateTenderFilenames(fileType, extension) {
     const cleanGrupa = cleanFilenameText(grupaProizvoda);
     
     // Generate ZIP filename (main package name)
-    const zipName = `${cleanKupac}_${cleanGrupa}_${datumPredaje}.zip`;
+    const zipName = `${datumPredaje}_${cleanGrupa}_${cleanKupac}.zip`;
     
     // Generate internal filename (inside ZIP)
     const fileTypeMap = {
@@ -280,12 +280,18 @@ function extractWeight(name, unit, code, source) {
  */
 function parseSmartDate(dateInput) {
     if (!dateInput) return '';
-    
+
     const dateStr = dateInput.toString().trim();
     if (!dateStr) return '';
-    
+
+    // Skip obvious non-date values (text headers, long numbers that are clearly codes, supplier names)
+    if (dateStr.length > 20 || /^[A-Za-z\s]+$/.test(dateStr)) {
+        // This is likely a header text or supplier name, not a date - fail silently
+        return '';
+    }
+
     Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `Parsing date: "${dateStr}"`);
-    
+
     try {
         // 1. Check if already in ISO format (YYYY-MM-DD)
         if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -295,7 +301,7 @@ function parseSmartDate(dateInput) {
                 return dateStr;
             }
         }
-        
+
         // 2. Check if Excel serial number
         const serialNumber = parseFloat(dateStr);
         if (!isNaN(serialNumber) && serialNumber > 25000 && serialNumber < 80000) {
@@ -306,18 +312,18 @@ function parseSmartDate(dateInput) {
                 return result;
             }
         }
-        
+
         // 3. DMY format (European) - priority
         const dmyMatch = dateStr.match(/^(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2,4})$/);
         if (dmyMatch) {
             let day = parseInt(dmyMatch[1]);
             let month = parseInt(dmyMatch[2]);
             let year = parseInt(dmyMatch[3]);
-            
+
             if (year < 100) {
                 year += year < 50 ? 2000 : 1900;
             }
-            
+
             if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year > 1950 && year < 2050) {
                 const testDate = new Date(year, month - 1, day);
                 if (testDate.getFullYear() === year && testDate.getMonth() === (month - 1) && testDate.getDate() === day) {
@@ -327,18 +333,18 @@ function parseSmartDate(dateInput) {
                 }
             }
         }
-        
+
         // 4. MDY format fallback
         const mdyMatch = dateStr.match(/^(\d{1,2})[\.\/\-](\d{1,2})[\.\/\-](\d{2,4})$/);
         if (mdyMatch) {
             let month = parseInt(mdyMatch[1]);
             let day = parseInt(mdyMatch[2]);
             let year = parseInt(mdyMatch[3]);
-            
+
             if (year < 100) {
                 year += year < 50 ? 2000 : 1900;
             }
-            
+
             if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year > 1950 && year < 2050) {
                 const testDate = new Date(year, month - 1, day);
                 if (testDate.getFullYear() === year && testDate.getMonth() === (month - 1) && testDate.getDate() === day) {
@@ -348,14 +354,14 @@ function parseSmartDate(dateInput) {
                 }
             }
         }
-        
+
         // 5. YMD format
         const ymdMatch = dateStr.match(/^(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})$/);
         if (ymdMatch) {
             const year = parseInt(ymdMatch[1]);
             const month = parseInt(ymdMatch[2]);
             const day = parseInt(ymdMatch[3]);
-            
+
             if (day >= 1 && day <= 31 && month >= 1 && month <= 12 && year > 1950 && year < 2050) {
                 const testDate = new Date(year, month - 1, day);
                 if (testDate.getFullYear() === year && testDate.getMonth() === (month - 1) && testDate.getDate() === day) {
@@ -365,7 +371,7 @@ function parseSmartDate(dateInput) {
                 }
             }
         }
-        
+
         // 6. JavaScript Date parser as last option
         const jsDate = new Date(dateStr);
         if (!isNaN(jsDate.getTime()) && jsDate.getFullYear() > 1950 && jsDate.getFullYear() < 2050) {
@@ -373,12 +379,13 @@ function parseSmartDate(dateInput) {
             Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `JavaScript parser "${dateStr}" → ${result}`);
             return result;
         }
-        
-        Logger.error(`Could not parse date: "${dateStr}"`);
+
+        // Only log at DEBUG level, not ERROR - many non-date values are expected
+        Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `Could not parse date: "${dateStr}"`);
         return '';
-        
+
     } catch (error) {
-        Logger.error(`Date parsing error for "${dateStr}":`, error);
+        Logger.area('FILE_PROCESSING', Logger.LEVELS.DEBUG, `Date parsing error for "${dateStr}":`, error);
         return '';
     }
 }
@@ -403,7 +410,7 @@ function getSourceColor(source) {
 function getBadgeClass(source) {
     const lowerSource = source.toLowerCase();
     if (lowerSource.includes('lager')) return 'badge-green';
-    if (lowerSource.includes('urpd')) return 'badge-purple';
+    if (lowerSource.includes('urpd')) return 'badge-green'; // FIXED: URPD is also "our article" - green badge
     return 'badge-blue';
 }
 
@@ -476,28 +483,29 @@ function isOurArticle(source) {
 }
 
 /**
- * NEW: Enhanced function to determine if article is truly "ours" 
- * ENHANCED LOGIC: Must have correct source AND exist in weight database
+ * NEW: Enhanced function to determine if article is truly "ours"
  * @param {string} source - Article source
- * @param {string} code - Article code
+ * @param {string} code - Article code (optional)
  * @returns {boolean} True if truly our article
  */
 function isTrulyOurArticle(source, code) {
-    if (!source || !code) return false;
-    
-    // First check: source must be LAGER or URPD
+    if (!source) return false;
+
+    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
     const lowerSource = source.toLowerCase();
-    const hasCorrectSource = lowerSource.includes('lager') || lowerSource.includes('urpd');
-    
-    if (!hasCorrectSource) {
-        return false;
+    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
+
+    if (isLagerOrUrpd) {
+        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
     }
-    
-    // Second check: code must exist in weight database
-    const existsInWeightDb = typeof window.weightDatabase !== 'undefined' && 
-                            window.weightDatabase.has(code);
-    
-    return existsInWeightDb;
+
+    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
+    const isDirectWeightDbArticle = code &&
+                                   typeof window.weightDatabase !== 'undefined' &&
+                                   window.weightDatabase.has(code) &&
+                                   lowerSource.includes('weight database');
+
+    return isDirectWeightDbArticle;
 }
 
 /**
@@ -696,6 +704,120 @@ function throttle(func, limit) {
     };
 }
 
+/**
+ * PDV Selection Dialog for non-"NAŠ" articles
+ * Prompts user to select between 25% (default) and 5% PDV rate
+ * @param {string} articleName - Name of the article being added
+ * @returns {Promise<number>} Selected PDV rate (25 or 5)
+ */
+function selectPDVRate(articleName) {
+    return new Promise((resolve) => {
+        // Create modal overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: Arial, sans-serif;
+        `;
+
+        // Create dialog
+        const dialog = document.createElement('div');
+        dialog.style.cssText = `
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        `;
+
+        dialog.innerHTML = `
+            <h3 style="margin: 0 0 16px 0; color: #374151; font-size: 18px;">
+                🏷️ Odabir PDV stope
+            </h3>
+            <p style="margin: 0 0 20px 0; color: #6b7280; font-size: 14px; line-height: 1.4;">
+                <strong>Artikel:</strong> ${articleName}<br>
+                <em>Ovaj artikel nije iz našeg šifarnika. Molimo odaberite PDV stopu:</em>
+            </p>
+            <div style="display: flex; gap: 12px; justify-content: center;">
+                <button id="pdv25Btn" style="
+                    background: #059669;
+                    color: white;
+                    border: none;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    font-size: 14px;
+                    min-width: 120px;
+                " onmouseover="this.style.background='#047857'" onmouseout="this.style.background='#059669'">
+                    ✅ 25% PDV (default)
+                </button>
+                <button id="pdv5Btn" style="
+                    background: #7c3aed;
+                    color: white;
+                    border: none;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    font-size: 14px;
+                    min-width: 120px;
+                " onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">
+                    🍎 5% PDV
+                </button>
+            </div>
+            <p style="margin: 16px 0 0 0; color: #9ca3af; font-size: 12px;">
+                ESC za zatvaranje (default: 25%)
+            </p>
+        `;
+
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        // Handle button clicks
+        const pdv25Btn = dialog.querySelector('#pdv25Btn');
+        const pdv5Btn = dialog.querySelector('#pdv5Btn');
+
+        function closeDialog(pdvRate) {
+            document.body.removeChild(overlay);
+            resolve(pdvRate);
+        }
+
+        pdv25Btn.addEventListener('click', () => closeDialog(25));
+        pdv5Btn.addEventListener('click', () => closeDialog(5));
+
+        // Handle ESC key (default to 25%)
+        function handleKeydown(event) {
+            if (event.key === 'Escape') {
+                document.removeEventListener('keydown', handleKeydown);
+                closeDialog(25);
+            }
+        }
+
+        document.addEventListener('keydown', handleKeydown);
+
+        // Auto-focus the default button
+        pdv25Btn.focus();
+
+        // Click outside to close (default to 25%)
+        overlay.addEventListener('click', (event) => {
+            if (event.target === overlay) {
+                closeDialog(25);
+            }
+        });
+    });
+}
+
 // Expose functions globally
 window.fixCroatianEncoding = fixCroatianEncoding;
 window.standardizeText = standardizeText;
@@ -718,6 +840,7 @@ window.refreshTroskovnikColors = refreshTroskovnikColors;
 window.debounce = debounce;
 window.throttle = throttle;
 window.extractCodeFromBrackets = extractCodeFromBrackets;
+window.selectPDVRate = selectPDVRate;
 
 Logger.info('Enhanced utils module loaded with weight database integration');
 Logger.debug('Priority 0: Weight Database (za naše artikle)');

@@ -21,8 +21,9 @@ function isOurArticle(source) {
 
 /**
  * NEW: Enhanced function to determine if article is truly "ours"
- * SIMPLIFIED LOGIC: Only checks if source contains LAGER or URPD
- * NOTE: Weight database is NOT required - article is "ours" based on source alone
+ * @param {string} source - Article source
+ * @param {string} code - Article code (optional)
+ * @returns {boolean} True if truly our article
  */
 function isTrulyOurArticle(source, code) {
     if (!source) {
@@ -30,13 +31,23 @@ function isTrulyOurArticle(source, code) {
         return false;
     }
 
-    // Check: source must be LAGER or URPD
-    const src = source.toLowerCase();
-    const result = src.includes('lager') || src.includes('urpd');
+    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
+    const lowerSource = source.toLowerCase();
+    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
 
-    console.log('[SEARCH]', result ? '✅' : '❌', 'isTrulyOurArticle for', code, '| source:', source, '| result:', result);
+    if (isLagerOrUrpd) {
+        console.log('[SEARCH] ✅ isTrulyOurArticle for', code, '| LAGER/URPD source');
+        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
+    }
 
-    return result;
+    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
+    const isDirectWeightDbArticle = code &&
+                                   typeof window.weightDatabase !== 'undefined' &&
+                                   window.weightDatabase.has(code) &&
+                                   lowerSource.includes('weight database');
+
+    console.log('[SEARCH]', isDirectWeightDbArticle ? '✅' : '❌', 'isTrulyOurArticle for', code, '| Weight DB:', isDirectWeightDbArticle);
+    return isDirectWeightDbArticle;
 }
 
 /**

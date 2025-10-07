@@ -16,28 +16,39 @@ function isOurArticle(source) {
 }
 
 /**
- * NEW: Enhanced function to determine if article is truly "ours" 
- * ENHANCED LOGIC: Must have correct source AND exist in weight database
+ * NEW: Enhanced function to determine if article is truly "ours"
  * @param {string} source - Article source
- * @param {string} code - Article code
+ * @param {string} code - Article code (optional)
  * @returns {boolean} True if truly our article
  */
 function isTrulyOurArticle(source, code) {
-    if (!source || !code) return false;
-    
-    // First check: source must be LAGER or URPD
-    const lowerSource = source.toLowerCase();
-    const hasCorrectSource = lowerSource.includes('lager') || lowerSource.includes('urpd');
-    
-    if (!hasCorrectSource) {
+    if (!source) {
+        console.log('❌ isTrulyOurArticle: NO SOURCE for code:', code);
         return false;
     }
-    
-    // Second check: code must exist in weight database
-    const existsInWeightDb = typeof window.weightDatabase !== 'undefined' && 
-                            window.weightDatabase.has(code);
-    
-    return existsInWeightDb;
+
+    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
+    const lowerSource = source.toLowerCase();
+    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
+
+    if (isLagerOrUrpd) {
+        console.log('✅ isTrulyOurArticle: TRUE for', code, '| LAGER/URPD source');
+        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
+    }
+
+    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
+    const isDirectWeightDbArticle = code &&
+                                   typeof window.weightDatabase !== 'undefined' &&
+                                   window.weightDatabase.has(code) &&
+                                   lowerSource.includes('weight database');
+
+    if (isDirectWeightDbArticle) {
+        console.log('✅ isTrulyOurArticle: TRUE for', code, '| Weight DB article');
+    } else {
+        console.log('❌ isTrulyOurArticle: FALSE for', code, '| source:', source);
+    }
+
+    return isDirectWeightDbArticle;
 }
 
 /**
@@ -525,10 +536,15 @@ function updateResultsDisplay() {
                         '<div style="font-size: 11px; color: #16a34a; line-height: 0.8;">' + pdvDisplay + '</div></td>';
                 }
                 
+                // DEBUG: Log badge rendering
+                const isOur = isTrulyOurArticle(item.source, item.code);
+                const badgeClass = getBadgeClass(item.source);
+                console.log('🎨 BADGE RENDER:', item.code, '| source:', item.source, '| isOur:', isOur, '| badgeClass:', badgeClass);
+
                 html += '<td style="padding: 1px; font-size: 13px; text-align: center; line-height: 0.9; vertical-align: middle;">' + formattedDate + '</td>' +
                     '<td style="padding: 1px; text-align: center; vertical-align: middle;">' +
                         '<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">' +
-                            '<span class="badge ' + getBadgeClass(item.source) + '" style="font-size: 10px; padding: 1px 4px; border-radius: 3px; font-weight: 600;">' + (isTrulyOurArticle(item.source, item.code) ? '🏠 NAŠ' : '📋 PO CJENIKU') + '</span>' +
+                            '<span class="badge ' + badgeClass + '" style="font-size: 10px; padding: 1px 4px; border-radius: 3px; font-weight: 600;">' + (isOur ? '🏠 NAŠ' : '📋 PO CJENIKU') + '</span>' +
                             '<div style="font-size: 9px; color: #6b7280; font-weight: 500; line-height: 1;">' + parseSourceName(item.source) + '</div>' +
                         '</div>' +
                     '</td>' +

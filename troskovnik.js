@@ -6,28 +6,29 @@
  */
 
 /**
- * NEW: Enhanced function to determine if article is truly "ours" 
- * ENHANCED LOGIC: Must have correct source AND exist in weight database
+ * NEW: Enhanced function to determine if article is truly "ours"
  * @param {string} source - Article source
- * @param {string} code - Article code
+ * @param {string} code - Article code (optional)
  * @returns {boolean} True if truly our article
  */
 function isTrulyOurArticle(source, code) {
-    if (!source || !code) return false;
-    
-    // First check: source must be LAGER or URPD
+    if (!source) return false;
+
+    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
     const lowerSource = source.toLowerCase();
-    const hasCorrectSource = lowerSource.includes('lager') || lowerSource.includes('urpd');
-    
-    if (!hasCorrectSource) {
-        return false;
+    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
+
+    if (isLagerOrUrpd) {
+        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
     }
-    
-    // Second check: code must exist in weight database
-    const existsInWeightDb = typeof window.weightDatabase !== 'undefined' && 
-                            window.weightDatabase.has(code);
-    
-    return existsInWeightDb;
+
+    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
+    const isDirectWeightDbArticle = code &&
+                                   typeof window.weightDatabase !== 'undefined' &&
+                                   window.weightDatabase.has(code) &&
+                                   lowerSource.includes('weight database');
+
+    return isDirectWeightDbArticle;
 }
 
 // ===== CONFIGURATION =====
@@ -52,6 +53,52 @@ let excelTroskovnikData = {
     nacin_predaje: null,             // W21
     datum_predaje: null              // W22
 };
+
+// ===== EXCEL DATE CONVERSION =====
+/**
+ * Convert Excel serial date number to readable format
+ * Excel dates are stored as serial numbers since 1900-01-01
+ */
+function convertExcelSerialDate(serial) {
+    if (!serial || isNaN(serial)) {
+        return serial; // Return as-is if not a number
+    }
+
+    // Excel serial date starts from 1900-01-01
+    // Note: Excel incorrectly treats 1900 as a leap year, so we need to adjust
+    const excelEpoch = new Date(1899, 11, 30); // December 30, 1899
+    const days = Math.floor(serial);
+    const time = serial - days;
+
+    // Calculate the date
+    const date = new Date(excelEpoch.getTime() + days * 24 * 60 * 60 * 1000);
+
+    // Add time component if present
+    if (time > 0) {
+        const hours = Math.floor(time * 24);
+        const minutes = Math.floor((time * 24 - hours) * 60);
+        const seconds = Math.floor(((time * 24 - hours) * 60 - minutes) * 60);
+
+        date.setHours(hours, minutes, seconds);
+
+        // Return formatted date with time
+        return date.toLocaleString('hr-HR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } else {
+        // Return formatted date only
+        return date.toLocaleDateString('hr-HR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+    }
+}
 
 // ===== DECIMAL QUANTITY PARSING =====
 /**
@@ -784,8 +831,9 @@ class TroskovnikUI {
     
     /**
      * NOVA FUNKCIJA: Handles price changes and automatically creates result item
+     * ENHANCED: PDV selection for manual entries
      */
-    static handlePriceChange(itemId, field, newPrice) {
+    static async handlePriceChange(itemId, field, newPrice) {
         // Only handle izlazna_cijena changes for manual result creation
         if (field !== 'izlazna_cijena') return;
         
@@ -804,7 +852,7 @@ class TroskovnikUI {
             
             if (!existingResult) {
                 // Create new manual result item only if no result exists
-                TroskovnikUI.createManualResultItem(item, price);
+                await TroskovnikUI.createManualResultItem(item, price);
             } else {
                 // Update existing result (whether it's manual or from search)
                 existingResult.pricePerPiece = price;
@@ -820,8 +868,9 @@ class TroskovnikUI {
     
     /**
      * NOVA FUNKCIJA: Creates a manual result item when user enters price
+     * ENHANCED: PDV selection for manual entries
      */
-    static createManualResultItem(troskovnikItem, izlaznaPrice) {
+    static async createManualResultItem(troskovnikItem, izlaznaPrice) {
         if (typeof results === 'undefined' || !Array.isArray(results)) {
             window.results = [];
         }
@@ -832,7 +881,17 @@ class TroskovnikUI {
         // Calculate weight-based prices
         const weight = troskovnikItem.tezina || 1;
         const pricePerKg = weight > 0 ? izlaznaPrice / weight : izlaznaPrice;
-        
+
+        // ENHANCED: PDV selection for manual entries
+        let selectedPdvStopa = 25; // Default
+        try {
+            selectedPdvStopa = await window.selectPDVRate(troskovnikItem.naziv_artikla);
+            console.log(`🏷️ User selected PDV rate: ${selectedPdvStopa}% for manual entry "${troskovnikItem.naziv_artikla}"`);
+        } catch (error) {
+            console.error('Error in PDV selection dialog for manual entry:', error);
+            selectedPdvStopa = 25; // Default fallback
+        }
+
         // Create manual result item
         const manualResult = {
             id: resultId,
@@ -851,7 +910,7 @@ class TroskovnikUI {
             hasUserPrice: true,
             userPriceType: 'pricePerPiece',
             isManualEntry: true,
-            customPdvStopa: 25 // Default PDV 25%
+            customPdvStopa: selectedPdvStopa
         };
         
         // Add to results
@@ -1133,7 +1192,12 @@ function processExcelTroskovnik(file) {
                 // W22 - Datum i sat predaje
                 const w22Cell = worksheet['W22'];
                 if (w22Cell && w22Cell.v) {
-                    excelTroskovnikData.datum_predaje = String(w22Cell.v).trim();
+                    // Check if it's a number (Excel serial date) or already formatted text
+                    if (typeof w22Cell.v === 'number') {
+                        excelTroskovnikData.datum_predaje = convertExcelSerialDate(w22Cell.v);
+                    } else {
+                        excelTroskovnikData.datum_predaje = String(w22Cell.v).trim();
+                    }
                 }
                 
                 // Log učitane Excel podatke
@@ -1798,7 +1862,7 @@ function exportTroskovnikExcel() {
     
     // Generate filename using tender header data
     const filenames = generateTenderFilenames('Troskovnik', 'xlsx');
-    const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Troskovnik.xlsx`;
+    const filename = `${filenames.datumPredaje}_${filenames.cleanGrupa}_${filenames.cleanKupac}_Troskovnik.xlsx`;
     
     XLSX.writeFile(wb, filename);
     

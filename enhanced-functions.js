@@ -10,28 +10,29 @@ console.log('🔥🔥🔥🔥🔥 Loading enhanced-functions.js module...');
 // ===== ENHANCED ARTICLE IDENTIFICATION FUNCTIONS =====
 
 /**
- * NEW: Enhanced function to determine if article is truly "ours" 
- * ENHANCED LOGIC: Must have correct source AND exist in weight database
+ * NEW: Enhanced function to determine if article is truly "ours"
  * @param {string} source - Article source
- * @param {string} code - Article code
+ * @param {string} code - Article code (optional)
  * @returns {boolean} True if truly our article
  */
 function isTrulyOurArticle(source, code) {
-    if (!source || !code) return false;
-    
-    // First check: source must be LAGER or URPD
+    if (!source) return false;
+
+    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
     const lowerSource = source.toLowerCase();
-    const hasCorrectSource = lowerSource.includes('lager') || lowerSource.includes('urpd');
-    
-    if (!hasCorrectSource) {
-        return false;
+    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
+
+    if (isLagerOrUrpd) {
+        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
     }
-    
-    // Second check: code must exist in weight database
-    const existsInWeightDb = typeof window.weightDatabase !== 'undefined' && 
-                            window.weightDatabase.has(code);
-    
-    return existsInWeightDb;
+
+    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
+    const isDirectWeightDbArticle = code &&
+                                   typeof window.weightDatabase !== 'undefined' &&
+                                   window.weightDatabase.has(code) &&
+                                   lowerSource.includes('weight database');
+
+    return isDirectWeightDbArticle;
 }
 
 // ===== TABLICA RABATA ENHANCED FUNCTIONS =====
@@ -1147,13 +1148,38 @@ window.getGroupColor = getGroupColor;
 
 // Enhanced keyboard handlers
 if (typeof window.handlePriceKeydown === 'undefined') {
-    function handlePriceKeydown(event, articleId, targetRB, isOurArticle) {
+    async function handlePriceKeydown(event, articleId, targetRB, isOurArticle) {
         if (event.key === 'Enter') {
             event.preventDefault();
-            addWithPriceFromAutocomplete(articleId, targetRB, isOurArticle, event);
+            event.stopPropagation(); // FIXED: Prevent event bubbling
+
+            const priceInput = event.target;
+            const hasPrice = priceInput.value && priceInput.value.trim() !== '';
+
+            console.log(`🔑 FALLBACK Enter pressed in price input: articleId=${articleId}, targetRB=${targetRB}, hasPrice=${hasPrice}`);
+
+            // Visual feedback
+            priceInput.style.boxShadow = '0 0 10px #10b981';
+            setTimeout(() => {
+                priceInput.style.boxShadow = '';
+            }, 300);
+
+            if (hasPrice) {
+                await addWithPriceFromAutocomplete(articleId, targetRB, isOurArticle);
+                // Close autocomplete after successful addition
+                if (typeof forceCloseAutocomplete === 'function') {
+                    setTimeout(() => {
+                        forceCloseAutocomplete();
+                    }, 100);
+                }
+            } else {
+                if (typeof addWithoutPriceFromAutocomplete === 'function') {
+                    addWithoutPriceFromAutocomplete(articleId, targetRB);
+                }
+            }
         }
     }
-    
+
     window.handlePriceKeydown = handlePriceKeydown;
 }
 
@@ -1161,14 +1187,19 @@ if (typeof window.handleWeightKeydownAutocomplete === 'undefined') {
     function handleWeightKeydownAutocomplete(event, articleId, targetRB) {
         if (event.key === 'Enter') {
             event.preventDefault();
+            event.stopPropagation(); // FIXED: Prevent event bubbling
+
+            console.log(`🔑 FALLBACK Enter pressed in weight input: articleId=${articleId}, targetRB=${targetRB}`);
+
             // Focus on price input
             const priceInput = document.getElementById(`price-${articleId}-${targetRB}`);
             if (priceInput) {
                 priceInput.focus();
+                priceInput.select();
             }
         }
     }
-    
+
     window.handleWeightKeydownAutocomplete = handleWeightKeydownAutocomplete;
 }
 

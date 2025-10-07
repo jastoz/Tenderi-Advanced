@@ -412,7 +412,7 @@ function exportTablicaRabataExcel() {
     
     // Generate filename using tender header data
     const filenames = generateTenderFilenames('Rabata', 'xlsx');
-    const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Rabata.xlsx`;
+    const filename = `${filenames.datumPredaje}_${filenames.cleanGrupa}_${filenames.cleanKupac}_Rabata.xlsx`;
     
     // Save file
     XLSX.writeFile(wb, filename);
@@ -446,28 +446,29 @@ function clearTablicaRabata() {
 }
 
 /**
- * NEW: Enhanced function to determine if article is truly "ours" 
- * ENHANCED LOGIC: Must have correct source AND exist in weight database
+ * NEW: Enhanced function to determine if article is truly "ours"
  * @param {string} source - Article source
- * @param {string} code - Article code
+ * @param {string} code - Article code (optional)
  * @returns {boolean} True if truly our article
  */
 function isTrulyOurArticle(source, code) {
-    if (!source || !code) return false;
-    
-    // First check: source must be LAGER or URPD
+    if (!source) return false;
+
+    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
     const lowerSource = source.toLowerCase();
-    const hasCorrectSource = lowerSource.includes('lager') || lowerSource.includes('urpd');
-    
-    if (!hasCorrectSource) {
-        return false;
+    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
+
+    if (isLagerOrUrpd) {
+        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
     }
-    
-    // Second check: code must exist in weight database
-    const existsInWeightDb = typeof window.weightDatabase !== 'undefined' && 
-                            window.weightDatabase.has(code);
-    
-    return existsInWeightDb;
+
+    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
+    const isDirectWeightDbArticle = code &&
+                                   typeof window.weightDatabase !== 'undefined' &&
+                                   window.weightDatabase.has(code) &&
+                                   lowerSource.includes('weight database');
+
+    return isDirectWeightDbArticle;
 }
 
 /**
@@ -877,7 +878,7 @@ function exportTablicaRabataExcel() {
         
         // Generate filename using tender header data
         const filenames = generateTenderFilenames('Rabata', 'xlsx');
-        const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Rabata.xlsx`;
+        const filename = `${filenames.datumPredaje}_${filenames.cleanGrupa}_${filenames.cleanKupac}_Rabata.xlsx`;
         
         // Save file
         XLSX.writeFile(wb, filename);
@@ -1134,7 +1135,7 @@ function exportTablicaRabataXML() {
         a.href = url;
         // Generate filename using tender header data with proper .xml extension
         const filenames = generateTenderFilenames('Rabata', 'xml');
-        const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Rabata.xml`;
+        const filename = `${filenames.datumPredaje}_${filenames.cleanGrupa}_${filenames.cleanKupac}_Rabata.xml`;
         a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
