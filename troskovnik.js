@@ -485,7 +485,10 @@ class TroskovnikUI {
             const tezina = Number(item.tezina) || 0;
             return sum + (kolicina * tezina);
         }, 0);
-        
+
+        // Izračun kg tjedno
+        const kgTjedno = totalTezina / 52;
+
         // Izračun RUC/KG
         const rucPerKg = totalTezina > 0 ? totalRUC / totalTezina : 0;
         
@@ -497,6 +500,7 @@ class TroskovnikUI {
         const formattedNabavna = '€' + totalNabavna.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         const formattedRUC = '€' + totalRUC.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         const formattedTotalTezina = totalTezina.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' kg';
+        const formattedKgTjedno = kgTjedno.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' kg/tjedno';
         const formattedRucPerKg = '€' + rucPerKg.toLocaleString('hr-HR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '/kg';
         const formattedMargin = marginPercent.toLocaleString('hr-HR', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '%';
 
@@ -527,6 +531,7 @@ class TroskovnikUI {
                             '<span style="color: #2563eb;">Nabavna: ' + formattedNabavna + '</span>' +
                             '<span style="color: #dc2626;">RUC: ' + formattedRUC + '</span>' +
                             '<span style="color: #f59e0b;">Ukupna težina: ' + formattedTotalTezina + '</span>' +
+                            '<span style="color: #10b981;">KG tjedno: ' + formattedKgTjedno + '</span>' +
                             '<span style="color: #8b5cf6;">RUC/KG: ' + formattedRucPerKg + '</span>' +
                             '<span style="color: #dc2626;">Marža: ' + formattedMargin + '</span>' +
                         '</div>' +

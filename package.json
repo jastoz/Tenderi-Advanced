@@ -6,9 +6,12 @@
   "scripts": {
     "start": "python -m http.server 8000",
     "serve": "python -m http.server 8000",
+    "build": "echo 'Static site build complete'",
+    "dev": "python -m http.server 8000",
     "test": "playwright test",
     "test:headed": "playwright test --headed",
-    "test:ui": "playwright test --ui"
+    "test:ui": "playwright test --ui",
+    "vercel-build": "echo 'Building for Vercel deployment'"
   },
   "keywords": [
     "procurement",
@@ -37,11 +40,7 @@
   "devDependencies": {
     "@playwright/test": "^1.54.2"
   },
-  "dependencies": {
-    "fsevents": "^2.3.2",
-    "playwright": "^1.54.2",
-    "playwright-core": "^1.54.2"
-  },
+  "dependencies": {},
   "bugs": {
     "url": "https://github.com/yourusername/trazilica-proizvoda-troskovnik/issues"
   }

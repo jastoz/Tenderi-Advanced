@@ -4,8 +4,6 @@
  */
 
 try {
-console.log('🔥🔥🔥🔥🔥 ENHANCED-FUNCTIONS.JS SE UČITAVA!!!');
-console.log('🔥🔥🔥🔥🔥 Loading enhanced-functions.js module...');
 
 // ===== ENHANCED ARTICLE IDENTIFICATION FUNCTIONS =====
 
@@ -42,25 +40,15 @@ function isTrulyOurArticle(source, code) {
  */
 function generateFromResults() {
     // ALWAYS LOG - bypass try/catch for critical debugging
-    console.log('🔥🔥🔥 JEBENI KRITIČNI DEBUG: generateFromResults POZVANA!!!');
-    console.log('🔥🔥🔥 window.results exists:', typeof window.results !== 'undefined');
-    console.log('🔥🔥🔥 window.results array:', Array.isArray(window.results));
-    console.log('🔥🔥🔥 window.results length:', window.results?.length || 'UNDEFINED');
-    console.log('🔥🔥🔥 window.weightDatabase exists:', typeof window.weightDatabase !== 'undefined');
-    console.log('🔥🔥🔥 window.weightDatabase size:', window.weightDatabase?.size || 'UNDEFINED');
-    console.log('🔥🔥🔥 window.tablicarabataData exists:', typeof window.tablicarabataData !== 'undefined');
     
     // Log first few results for inspection
     if (window.results && window.results.length > 0) {
-        console.log('🔥🔥🔥 First 3 results:', window.results.slice(0, 3));
     }
     
     try {
-        console.log('🔥 JEBENI DEBUG: Starting generateFromResults...');
         
         // Safety checks for required global variables
         if (typeof window.results === 'undefined' || !Array.isArray(window.results)) {
-            console.log('❌ JEBENO: Nema results!');
             alert('JEBENO: Nema results! Length: ' + (window.results?.length || 'undefined'));
             showMessage('error', 
                 '❌ Nema rezultata pretrage!\n\n' +
@@ -71,7 +59,6 @@ function generateFromResults() {
         }
         
         if (typeof window.troskovnik === 'undefined' || !Array.isArray(window.troskovnik)) {
-            console.log('❌ JEBENO: Nema troskovnik!');
             alert('JEBENO: Nema troskovnik! Length: ' + (window.troskovnik?.length || 'undefined'));
             showMessage('error', 
                 '❌ Troškovnik nije učitan!\n\n' +
@@ -81,12 +68,9 @@ function generateFromResults() {
             return;
         }
         
-        console.log('🔥 JEBENI DEBUG: Total results available:', results.length);
-        console.log('🔥 JEBENI DEBUG: Results data:', results);
         
         // FORCE LOG every result
         results.forEach((r, i) => {
-            console.log(`🔥 RESULT ${i}:`, {
                 name: r.name,
                 source: r.source, 
                 isFromWeightDatabase: r.isFromWeightDatabase,
@@ -114,16 +98,11 @@ function generateFromResults() {
         }
     
     // Check if we have results with user prices (ENHANCED: Use izlazna_cijena for Weight database)
-    console.log('🔥 JEBENI DEBUG: Starting resultsWithPrices filter...');
-    console.log('🔥🔥🔥 TOTAL RESULTS TO FILTER:', results.length);
     
     const resultsWithPrices = results.filter(r => {
-        console.log(`🔍 JEBENI DEBUG: Processing item: ${r.name} | isFromWeightDatabase: ${r.isFromWeightDatabase}`);
         
         // SPECIAL DEBUG FOR WEIGHT DATABASE ITEMS
         if (r.isFromWeightDatabase === true) {
-            console.log(`🔥🔥🔥 WEIGHT DATABASE ITEM DETECTED: ${r.name}`);
-            console.log(`🔥🔥🔥 Weight DB item full structure:`, {
                 name: r.name,
                 code: r.code,
                 sifra: r.sifra,
@@ -137,21 +116,16 @@ function generateFromResults() {
                 calculatedWeight: r.calculatedWeight
             });
             
-            console.log(`🏗️ JEBENI DEBUG: Processing Weight DB item: ${r.name} (RB: ${r.rb})`);
             const troskovnikItem = getTroskovnikItemForRB(r.rb);
-            console.log(`💰 JEBENI DEBUG: Troskovnik item for RB ${r.rb}:`, troskovnikItem);
-            console.log(`💰 JEBENI DEBUG: Direct price data:`, { hasUserPrice: r.hasUserPrice, pricePerPiece: r.pricePerPiece });
             
             // Check BOTH possible price sources:
             const hasTroskovnikPrice = troskovnikItem && troskovnikItem.izlazna_cijena > 0;
             const hasDirectPrice = r.hasUserPrice && r.pricePerPiece > 0;
             const hasValidPrice = hasTroskovnikPrice || hasDirectPrice;
             
-            console.log(`🔥🔥🔥 WEIGHT DB PRICE ANALYSIS:`);
             console.log(`  - Troskovnik price: ${hasTroskovnikPrice} (value: ${troskovnikItem?.izlazna_cijena || 0})`);
             console.log(`  - Direct price: ${hasDirectPrice} (value: ${r.pricePerPiece || 0})`);
             console.log(`  - Has valid price: ${hasValidPrice}`);
-            console.log(`✅ JEBENI DEBUG: Weight DB item validation:`, {
                 hasTroskovnikPrice,
                 hasDirectPrice, 
                 hasValidPrice,
@@ -161,32 +135,23 @@ function generateFromResults() {
             });
             
             if (hasValidPrice) {
-                console.log(`🎉🔥🔥🔥 WEIGHT DB ITEM ACCEPTED: ${r.name} - WILL BE IN RESULTS WITH PRICES`);
             } else {
-                console.log(`❌🔥🔥🔥 WEIGHT DB ITEM REJECTED: ${r.name} - NO VALID PRICE`);
             }
             
             return hasValidPrice;
         }
         // For all other articles, use existing logic
         const isValid = r.hasUserPrice && r.pricePerPiece > 0;
-        console.log(`📝 JEBENI DEBUG: Regular item ${r.name} valid: ${isValid} (hasUserPrice: ${r.hasUserPrice}, pricePerPiece: ${r.pricePerPiece})`);
         return isValid;
     });
     
-    console.log('🔥🔥🔥 RESULTAT FILTERA resultsWithPrices:');
-    console.log('🔥🔥🔥 Total items after price filter:', resultsWithPrices.length);
-    console.log('🔥🔥🔥 Weight DB items in resultsWithPrices:', resultsWithPrices.filter(r => r.isFromWeightDatabase === true).length);
-    console.log('🔥🔥🔥 Results with prices data:', resultsWithPrices);
     
     // Debug breakdown by type
     const weightDbItems = resultsWithPrices.filter(r => r.isFromWeightDatabase === true);
     const regularItems = resultsWithPrices.filter(r => r.isFromWeightDatabase !== true);
-    console.log('🔥🔥🔥 BREAKDOWN:');
     console.log('  - Weight DB items:', weightDbItems.length, weightDbItems.map(r => r.name));
     console.log('  - Regular items:', regularItems.length, regularItems.map(r => r.name));
     
-    console.log('📊 DEBUG: Results with prices:', resultsWithPrices.length);
     
     if (resultsWithPrices.length === 0) {
         showMessage('error', 
@@ -201,13 +166,9 @@ function generateFromResults() {
         return;
     }
     
-    // console.log('📊 Found results with prices:', resultsWithPrices.length);
     
     // ENHANCED LOGIC: Include ALL articles with internal codes (URPD, LAGER, prošlogodišnje cijene, weight database)
-    console.log('🔥 JEBENI DEBUG: Starting validArticlesForTablica filter...');
     const validArticlesForTablica = resultsWithPrices.filter(item => {
-        console.log(`🔍 JEBENI DEBUG: Filtering for tablica: ${item.name} | isFromWeightDatabase: ${item.isFromWeightDatabase}`);
-        console.log(`🔍 JEBENI DEBUG: Full item structure:`, {
             name: item.name,
             code: item.code,
             sifra: item.sifra,
@@ -220,7 +181,6 @@ function generateFromResults() {
         
         // Skip manual entries - they don't have real article codes needed for robni program
         if (item.isManualEntry) {
-            console.log(`⚠️ JEBENI DEBUG: Skipping manual entry: ${item.name} (no real article code)`);
             return false;
         }
         
@@ -229,21 +189,17 @@ function generateFromResults() {
         // PRIORITY 1: Traditional "naši artikli" (LAGER/URPD articles that exist in weight database)
         if (isTrulyOurArticle(item.source, item.code)) {
             includeReason = `Traditional LAGER/URPD article with weight database entry`;
-            console.log(`✅ JEBENI DEBUG: INCLUDING: ${item.name} -> ${item.code} (${includeReason})`);
             return true;
         }
         
         // PRIORITY 2: HISTORICAL_LAGER articles (prošlogodišnji + weight database)
         if (item.source === 'HISTORICAL_LAGER') {
             includeReason = `HISTORICAL_LAGER article (from prošlogodišnje cijene + weight database)`;
-            console.log(`✅ JEBENI DEBUG: INCLUDING: ${item.name} -> ${item.code} (${includeReason})`);
             return true;
         }
         
         // PRIORITY 3: Direct Weight Database articles (marked with isFromWeightDatabase flag)
         if (item.isFromWeightDatabase === true) {
-            console.log(`🔥🔥🔥 WEIGHT DATABASE ITEM IN TABLICA FILTER: ${item.name}`);
-            console.log(`🔥🔥🔥 Weight DB item details:`, {
                 code: item.code,
                 sifra: item.sifra,
                 source: item.source,
@@ -252,8 +208,6 @@ function generateFromResults() {
             });
             
             includeReason = `Direct Weight Database article`;
-            console.log(`✅🔥🔥🔥 WEIGHT DB ITEM WILL BE INCLUDED: ${item.name} -> ${item.code || item.sifra} (${includeReason})`);
-            console.log(`🎉🔥🔥🔥 Weight DB item will be included in tablica!`);
             return true;
         }
         
@@ -262,7 +216,6 @@ function generateFromResults() {
             const historicalPrice = window.getProslogodisnjaCijena(item.code);
             if (historicalPrice && historicalPrice > 0) {
                 includeReason = `Article from prošlogodišnje cijene database (€${historicalPrice})`;
-                console.log(`✅ INCLUDING: ${item.name} -> ${item.code} (${includeReason})`);
                 return true;
             }
         }
@@ -273,7 +226,6 @@ function generateFromResults() {
             if (codeFromBrackets && typeof window.weightDatabase !== 'undefined' && 
                 window.weightDatabase.has(codeFromBrackets)) {
                 includeReason = `Article with bracket code from weight database (${codeFromBrackets})`;
-                console.log(`✅ INCLUDING: ${item.name} -> ${codeFromBrackets} (${includeReason})`);
                 return true;
             }
         }
@@ -287,7 +239,6 @@ function generateFromResults() {
                 includeReason = hasWeightDbEntry ? 
                     `LAGER/URPD article with weight database entry (${item.code})` :
                     `LAGER/URPD article with internal code (no weight DB entry - ${item.code})`;
-                console.log(`✅ INCLUDING: ${item.name} -> ${item.code} (${includeReason})`);
                 return true;
             }
         }
@@ -305,13 +256,11 @@ function generateFromResults() {
         // Check both .code and .sifra properties
         const itemCode = item.code || item.sifra || item.Code || item.Sifra;
         
-        console.log(`🔍 PRIORITY 8 DEBUG: Checking ${item.name} - code: ${item.code}, sifra: ${item.sifra}, itemCode: ${itemCode}`);
         
         if (itemCode && typeof document !== 'undefined') {
             const weightsTableBody = document.getElementById('weightsTableBody');
             if (weightsTableBody) {
                 const tableRows = weightsTableBody.querySelectorAll('tr');
-                console.log(`📊 Found ${tableRows.length} rows in weights table for ${item.name}`);
                 
                 for (const row of tableRows) {
                     const cells = row.cells;
@@ -322,37 +271,26 @@ function generateFromResults() {
                             String(cellCode) === String(itemCode) ||
                             parseInt(cellCode) === parseInt(itemCode)) {
                             includeReason = `Article found in weight database HTML table (${itemCode})`;
-                            console.log(`✅ JEBENI DEBUG: INCLUDING via HTML table search: ${item.name} -> ${itemCode} (${includeReason})`);
                             return true;
                         }
                     }
                 }
-                console.log(`❌ PRIORITY 8 DEBUG: Code ${itemCode} not found in weight database HTML table for ${item.name}`);
             } else {
-                console.log(`❌ PRIORITY 8 DEBUG: Weight table not found for ${item.name}`);
             }
         } else {
-            console.log(`❌ PRIORITY 8 DEBUG: No valid code found for ${item.name} - code: ${item.code}, sifra: ${item.sifra}`);
         }
         
         // Log excluded articles for debugging
-        console.log(`❌ JEBENI DEBUG: EXCLUDING: ${item.name} -> ${item.code || 'NO CODE'} | Source: ${item.source} | isFromWeightDatabase: ${item.isFromWeightDatabase} (No internal code or doesn't match criteria)`);
         return false;
     });
     
-    console.log('🔥🔥🔥 RESULTAT FILTERA validArticlesForTablica:');
-    console.log('🔥🔥🔥 Total valid items for tablica:', validArticlesForTablica.length);
-    console.log('🔥🔥🔥 Weight DB items in validArticlesForTablica:', validArticlesForTablica.filter(r => r.isFromWeightDatabase === true).length);
     
     // Debug breakdown by type for tablica
     const validWeightDbItems = validArticlesForTablica.filter(r => r.isFromWeightDatabase === true);
     const validRegularItems = validArticlesForTablica.filter(r => r.isFromWeightDatabase !== true);
-    console.log('🔥🔥🔥 TABLICA BREAKDOWN:');
     console.log('  - Valid Weight DB items:', validWeightDbItems.length, validWeightDbItems.map(r => r.name));
     console.log('  - Valid Regular items:', validRegularItems.length, validRegularItems.map(r => r.name));
     
-    console.log('🔥 JEBENI DEBUG: Valid articles for tablica:', validArticlesForTablica.length);
-    console.log('🔥 JEBENI DEBUG: Valid articles data:', validArticlesForTablica);
     
     if (validArticlesForTablica.length === 0) {
         showMessage('error', 
@@ -393,7 +331,6 @@ function generateFromResults() {
         }
         
         if (!code) {
-            // console.log(`⚠️ No code found for article: ${item.name}`);
             return;
         }
         
@@ -408,7 +345,6 @@ function generateFromResults() {
     Object.entries(groupedByCode).forEach(([code, items]) => {
         items.sort((a, b) => a.pricePerPiece - b.pricePerPiece);
         const cheapest = items[0];
-        // console.log(`💰 Code ${code}: Selected cheapest - €${cheapest.pricePerPiece.toFixed(2)}`);
         uniqueItems.push(cheapest);
     });
     
@@ -519,18 +455,12 @@ function generateFromResults() {
         };
         
         tablicaRabata.push(rabataEntry);
-        // console.log(`✅ Added enhanced entry ${index + 1}: ${rabataEntry.sifra_artikla} - ${rabataEntry.naziv_artikla}`);
     });
     
-    console.log('🔥🔥🔥 FINALNA TABLICA RABATA GENERIRANA:');
-    console.log('🔥🔥🔥 Total entries in tablica rabata:', tablicaRabata.length);
-    console.log('🔥🔥🔥 Weight DB entries in tablica rabata:', tablicaRabata.filter(item => item.article_type === 'weight_database').length);
-    console.log('🔥🔥🔥 Full tablica rabata data:', tablicaRabata);
     
     // Debug breakdown of final tablica
     const finalWeightDbItems = tablicaRabata.filter(item => item.article_type === 'weight_database');
     const finalOtherItems = tablicaRabata.filter(item => item.article_type !== 'weight_database');
-    console.log('🔥🔥🔥 FINAL TABLICA BREAKDOWN:');
     console.log('  - Weight DB entries:', finalWeightDbItems.length, finalWeightDbItems.map(r => r.naziv_artikla));
     console.log('  - Other entries:', finalOtherItems.length, finalOtherItems.map(r => r.naziv_artikla));
     
@@ -789,7 +719,6 @@ function updateTablicaRabataDisplay() {
         tablicaRabataCountEl.textContent = tablicaRabata.length;
     }
     
-    // console.log('✅ Enhanced tablica rabata display updated with', tablicaRabata.length, 'items');
 }
 
 /**
@@ -1129,13 +1058,10 @@ let selectedResults = window.selectedResults;
 // ===== EXPOSE ALL ENHANCED FUNCTIONS GLOBALLY =====
 
 // Tablica Rabata Enhanced Functions
-console.log('🔥🔥🔥🔥🔥 EXPORTIRAM generateFromResults FUNKCIJU!');
 window.generateFromResults = generateFromResults;
-console.log('🔥🔥🔥🔥🔥 generateFromResults FUNKCIJA EXPORTIRANA!', typeof window.generateFromResults);
 
 // Test function to verify this file is loaded
 window.testEnhancedFunctionsLoaded = function() {
-    console.log('🔥🔥🔥🔥🔥 ENHANCED-FUNCTIONS.JS JE UČITAN!');
     return true;
 };
 window.updateTablicaRabataDisplay = updateTablicaRabataDisplay;
@@ -1283,7 +1209,6 @@ if (typeof window.autocompleteResults === 'undefined') {
 }
 let autocompleteResults = window.autocompleteResults;
 
-// console.log('✅ Enhanced functions module loaded - FIXED VERSION:');
 // console.log('🎯 Main functions available:');
 // console.log('  - generateFromResults() - Generate tablica from enhanced results');
 // console.log('  - addWithPriceFromAutocomplete() - Direct price input workflow');
@@ -1293,7 +1218,6 @@ let autocompleteResults = window.autocompleteResults;
 // console.log('🎨 FIXED: All red colors changed to purple (#7c3aed)');
 // console.log('📐 FIXED: Price and weight inputs are now side by side');
 // console.log('📋 FIXED: "Tuđi" changed to "Po cjeniku"');
-// console.log('✅ FIXED: Green checkmark button for adding without price');
 // console.log('🔧 FIXED: Autocomplete no longer closes when editing input fields');
 // console.log('⚡ Workflow skraćen s 4 koraka na 1 korak - READY!');
 
@@ -1373,18 +1297,15 @@ window.countCustomArticles = countCustomArticles;
 
 // JEBENA TEST FUNKCIJA - pozovite iz konzole
 window.testJebeniResults = function() {
-    console.log('🔥🔥🔥 JEBENI TEST RESULTS:');
     console.log('window.results:', window.results);
     console.log('results length:', window.results?.length);
     console.log('window.troskovnik:', window.troskovnik?.length);
     console.log('generateFromResults function exists:', typeof window.generateFromResults);
     
     if (window.results && window.results.length > 0) {
-        console.log('🔥 PRVI REZULTAT:', window.results[0]);
         
         // Test weight database results
         const weightDbResults = window.results.filter(r => r.isFromWeightDatabase === true);
-        console.log('🔥 WEIGHT DATABASE RESULTS:', weightDbResults.length);
         weightDbResults.forEach((r, i) => {
             console.log(`  WDB ${i}:`, {
                 name: r.name,
@@ -1399,7 +1320,6 @@ window.testJebeniResults = function() {
     return 'Test completed - check logs above';
 };
 
-console.log('🔥🔥🔥🔥🔥 ENHANCED-FUNCTIONS.JS ZAVRŠAVA USPJEŠNO!');
 
 } catch (error) {
     console.error('🚨🚨🚨 GREŠKA U ENHANCED-FUNCTIONS.JS:', error);

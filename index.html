@@ -685,6 +685,10 @@
             
             <div style="margin-bottom: 16px; display: flex; gap: 24px; align-items: center;">
                 <label style="font-size: 15px; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="ourArticlesFilterCheckbox" checked onchange="window.setOurArticlesFilterEnabled && window.setOurArticlesFilterEnabled(this.checked)">
+                    Prikaži <b>NAŠE artikle</b> (LAGER/URPD)
+                </label>
+                <label style="font-size: 15px; display: flex; align-items: center; gap: 8px;">
                     <input type="checkbox" id="rotoFilterCheckbox" checked onchange="window.setRotoFilterEnabled && window.setRotoFilterEnabled(this.checked)">
                     Prikaži rezultate od dobavljača <b>ROTO</b>
                 </label>
@@ -1122,21 +1126,21 @@
     </div>
 
     <!-- Load JavaScript modules in correct order -->
-    <script src="logger.js"></script>
-    <script src="data.js"></script>
-    <script src="utils.js"></script>
-    <script src="weight-manager.js"></script>
-    <script src="kupci-autocomplete.js"></script>
-    <script src="enhanced-search.js"></script>
-    <script src="enhanced-results.js"></script>
-    <script src="enhanced-functions.js"></script>
-    <script src="troskovnik.js"></script>
-    <script src="tablicarabata.js"></script>
-    <script src="proslogodisnje-cijene.js"></script>
-    <script src="ui.js"></script>
-    <script src="google-drive-manager.js"></script>
-    <script src="state-manager.js"></script>
-    <script src="app.js"></script>
+    <script src="logger.js?v=4"></script>
+    <script src="data.js?v=4"></script>
+    <script src="utils.js?v=4"></script>
+    <script src="weight-manager.js?v=4"></script>
+    <script src="kupci-autocomplete.js?v=4"></script>
+    <script src="enhanced-search.js?v=4"></script>
+    <script src="enhanced-results.js?v=4"></script>
+    <script src="enhanced-functions.js?v=4"></script>
+    <script src="troskovnik.js?v=4"></script>
+    <script src="tablicarabata.js?v=4"></script>
+    <script src="proslogodisnje-cijene.js?v=4"></script>
+    <script src="ui.js?v=4"></script>
+    <script src="google-drive-manager.js?v=4"></script>
+    <script src="state-manager.js?v=4"></script>
+    <script src="app.js?v=4"></script>
 
     <script>
         // Debug: Provjeri je li enhanced-functions.js učitan

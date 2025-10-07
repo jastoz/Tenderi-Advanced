@@ -64,3 +64,4 @@ MANUAL_TEST_INSTRUCTIONS*.md
 
 # Package lock files
 package-lock.json
+.vercel

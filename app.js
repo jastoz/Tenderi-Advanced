@@ -154,6 +154,31 @@ function initializeEnhancedEventListeners() {
 
     // Enhanced keyboard shortcuts for new functionality
     document.addEventListener('keydown', function(event) {
+        // Number keys 1-6 to switch tabs (without modifiers)
+        if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+            const tabMap = {
+                '1': 'search',
+                '2': 'troskovnik',
+                '3': 'results',
+                '4': 'tablicaRabata',
+                '5': 'proslogodisnjeCijene',
+                '6': 'weights'
+            };
+
+            if (tabMap[event.key]) {
+                // Don't switch tabs if user is typing in an input field
+                const activeElement = document.activeElement;
+                if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+                    return;
+                }
+
+                event.preventDefault();
+                if (typeof showTab === 'function') {
+                    showTab(tabMap[event.key]);
+                }
+            }
+        }
+
         // Ctrl+R to refresh troškovnik colors
         if ((event.ctrlKey || event.metaKey) && event.key === 'r' && !event.shiftKey) {
             event.preventDefault();
@@ -162,7 +187,7 @@ function initializeEnhancedEventListeners() {
                 showMessage('success', '🎨 Troškovnik colors refreshed!');
             }
         }
-        
+
         // Ctrl+G to generate tablica rabata from results
         if ((event.ctrlKey || event.metaKey) && event.key === 'g') {
             event.preventDefault();
@@ -170,13 +195,13 @@ function initializeEnhancedEventListeners() {
                 generateFromResults();
             }
         }
-        
+
         // Ctrl+E to export current tab data
         if ((event.ctrlKey || event.metaKey) && event.key === 'e') {
             event.preventDefault();
             handleEnhancedExport();
         }
-        
+
         // Ctrl+F to focus search in weights tab
         if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
             event.preventDefault();

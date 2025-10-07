@@ -29,7 +29,7 @@ The application follows a modular JavaScript architecture with these key files:
 ### Key Features
 - **Enhanced Search**: Autocomplete with direct price input and range search (e.g., "Ajvar 300-1000" for 300-1000g products)
 - **Google Sheets Integration**: Real-time sync with Google Apps Script for weight/PDV data
-- **Dual Article Types**: "Our articles" (LAGER/URPD with automatic weights) vs "External articles" (manual price+weight)
+- **Dual Article Types**: "Our articles" (LAGER/URPD sources, classified regardless of weight database) vs "External articles" (manual price+weight)
 - **Enhanced Tablica Rabata**: **NEW**: Direct generation from search results with user-entered prices
 - **Historical Price Data**: **NEW**: Import and compare last year's prices for better pricing decisions
 - **State Management**: Quick save/load functionality with JSON serialization
@@ -144,7 +144,7 @@ The application integrates with Google Apps Script for weight data management:
 ### 4. Enhanced Tablica Rabata Generation (NEW)
 - Direct generation from search results with user-entered prices
 - Uses `generateFromResults()` function from `enhanced-functions.js`
-- Only processes LAGER/URPD articles with weight database entries
+- Processes all LAGER/URPD articles (source-based classification, weight database optional)
 - Automatically selects cheapest price per article code
 - One-step workflow (reduced from 4 steps to 1)
 
@@ -158,12 +158,14 @@ The application integrates with Google Apps Script for weight data management:
 
 ### Article Classification
 The application distinguishes between:
-- **"Our Articles"**: Source contains "LAGER" or "URPD" AND exists in weight database
+- **"Our Articles"**: Source contains "LAGER" or "URPD" (regardless of weight database)
   - Enhanced with `isTrulyOurArticle()` function for accurate classification
+  - Classified as "ours" based on source alone - weight database NOT required
   - Enables direct price input workflow in autocomplete
-- **"External Articles"**: All other articles requiring manual price/weight input
+  - Always displays with green color coding and "🏠 NAŠ" badge
+- **"External Articles"**: All other articles (sources not containing LAGER/URPD)
   - Shows purple pricing inputs for both price and weight
-  - Marked as "Po cjeniku" (external catalog) articles
+  - Marked as "📋 PO CJENIKU" (external catalog) articles
 
 ### PDV (VAT) Mapping
 Automatic PDV calculation based on tarifni broj:
@@ -208,7 +210,7 @@ Automatic PDV calculation based on tarifni broj:
 ## Key Enhanced Functions
 
 ### Enhanced Article Management (`enhanced-functions.js`)
-- `isTrulyOurArticle(source, code)` - Determines if article is truly "ours" (LAGER/URPD + exists in weight database)
+- `isTrulyOurArticle(source, code)` - Determines if article is truly "ours" (source contains LAGER or URPD, weight database NOT required)
 - `generateFromResults()` - **MAIN FUNCTION**: Generates tablica rabata from search results with user prices
 - `addWithPriceFromAutocomplete()` - Handles direct price input workflow
 - `addWithoutPriceFromAutocomplete()` - Adds articles without price (green checkmark)

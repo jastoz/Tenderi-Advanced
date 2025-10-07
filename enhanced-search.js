@@ -26,17 +26,13 @@ function isOurArticle(source) {
  * @returns {boolean} True if truly our article
  */
 function isTrulyOurArticle(source, code) {
-    if (!source) {
-        console.log('[SEARCH] ❌ isTrulyOurArticle: NO SOURCE for code:', code);
-        return false;
-    }
+    if (!source) return false;
 
     // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
     const lowerSource = source.toLowerCase();
     const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
 
     if (isLagerOrUrpd) {
-        console.log('[SEARCH] ✅ isTrulyOurArticle for', code, '| LAGER/URPD source');
         return true; // ✅ LAGER/URPD sheetovi su uvijek naši
     }
 
@@ -46,7 +42,6 @@ function isTrulyOurArticle(source, code) {
                                    window.weightDatabase.has(code) &&
                                    lowerSource.includes('weight database');
 
-    console.log('[SEARCH]', isDirectWeightDbArticle ? '✅' : '❌', 'isTrulyOurArticle for', code, '| Weight DB:', isDirectWeightDbArticle);
     return isDirectWeightDbArticle;
 }
 
@@ -651,8 +646,6 @@ async function handlePriceKeydown(event, articleId, targetRB, isOurArticle) {
         const priceInput = event.target;
         const hasPrice = priceInput.value && priceInput.value.trim() !== '';
 
-        console.log(`🔑 Enter pressed in price input: articleId=${articleId}, targetRB=${targetRB}, hasPrice=${hasPrice}, isOurArticle=${isOurArticle}`);
-
         // Visual feedback - briefly highlight the input
         priceInput.style.boxShadow = '0 0 10px #10b981';
         setTimeout(() => {
@@ -664,7 +657,6 @@ async function handlePriceKeydown(event, articleId, targetRB, isOurArticle) {
             showPriceComparison(articleId, priceInput.value);
 
             // Price + Enter = First choice (goes to troškovnik)
-            console.log(`➡️ Adding as first choice: ${articleId} with price ${priceInput.value}`);
             await addAsFirstChoice(articleId, targetRB, isOurArticle);
 
             // Close autocomplete after successful addition
@@ -673,7 +665,6 @@ async function handlePriceKeydown(event, articleId, targetRB, isOurArticle) {
             }, 100);
         } else {
             // Empty + Enter = Additional choice (nabavna opcija)
-            console.log(`➡️ Adding as additional choice: ${articleId} (no price)`);
             addAsAdditionalChoice(articleId, targetRB, isOurArticle);
 
             // Close autocomplete after successful addition
@@ -800,90 +791,41 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
         return;
     }
 
-    console.log(`🔍 DEBUG addAsFirstChoice: Looking for articleId "${articleId}"`);
-    console.log(`📊 autocompleteResults length: ${autocompleteResults.length}`);
-    console.log(`📝 autocompleteResults IDs:`, autocompleteResults.map(a => a.id));
-    console.log(`📊 main articles length: ${typeof articles !== 'undefined' ? articles.length : 'undefined'}`);
-    
     // Try to find the article in main articles array first, then in autocomplete results
     let article = null;
-    
+
     // ENHANCED SEARCH LOGIC: Try multiple sources
     // Fix: Convert articleId to number for comparison since article.id is numeric
     const articleIdNum = parseInt(articleId);
     const articleIdStr = String(articleId);
-    
-    console.log(`🔍 Trying to match: articleIdNum=${articleIdNum}, articleIdStr="${articleIdStr}"`);
-    
+
     if (typeof articles !== 'undefined' && articles.length > 0) {
         // Try both numeric and string comparison
         article = articles.find(a => a.id === articleIdNum || a.id === articleIdStr || String(a.id) === articleIdStr);
-        if (article) {
-            console.log(`✅ Found article in main articles array:`, article);
-        }
     }
-    
+
     if (!article && autocompleteResults.length > 0) {
-        console.log(`🔍 Searching in autocomplete results...`);
-        console.log(`🔍 DETAILED autocompleteResults DEBUG:`);
-        
-        // Log first few items for inspection
-        autocompleteResults.slice(0, 3).forEach((item, idx) => {
-            console.log(`  [${idx}] Full object:`, item);
-            console.log(`  [${idx}] ID: ${item.id} (type: ${typeof item.id})`);
-            console.log(`  [${idx}] Code: ${item.code} (type: ${typeof item.code})`);
-            console.log(`  [${idx}] Name: "${item.name}"`);
-        });
-        
         // Try multiple comparison strategies
-        console.log(`🔍 Trying different comparison strategies for articleId "${articleId}":`);
-        
-        // Strategy 1: Direct ID comparison (numeric)
         let found1 = autocompleteResults.find(a => a.id === articleIdNum);
-        console.log(`Strategy 1 (a.id === ${articleIdNum}):`, found1 ? '✅ FOUND' : '❌ Not found');
-        
-        // Strategy 2: Direct ID comparison (string)
         let found2 = autocompleteResults.find(a => a.id === articleIdStr);
-        console.log(`Strategy 2 (a.id === "${articleIdStr}"):`, found2 ? '✅ FOUND' : '❌ Not found');
-        
-        // Strategy 3: String conversion comparison
         let found3 = autocompleteResults.find(a => String(a.id) === articleIdStr);
-        console.log(`Strategy 3 (String(a.id) === "${articleIdStr}"):`, found3 ? '✅ FOUND' : '❌ Not found');
-        
-        // Strategy 4: Code comparison (for fallback)
         let found4 = autocompleteResults.find(a => a.code === articleIdStr || a.code === articleIdNum);
-        console.log(`Strategy 4 (a.code === "${articleIdStr}" || a.code === ${articleIdNum}):`, found4 ? '✅ FOUND' : '❌ Not found');
-        
+
         // Use the first successful strategy
         article = found1 || found2 || found3 || found4;
-        
-        if (article) {
-            console.log(`✅ Found article in autocompleteResults using one of the strategies:`, article);
-        } else {
-            console.error(`❌ FAILED: Article not found with any strategy in autocompleteResults`);
-            // Show all IDs for comparison
-            console.error(`All autocompleteResults IDs for comparison:`, autocompleteResults.map(a => ({ 
-                id: a.id, 
-                idType: typeof a.id, 
-                code: a.code,
-                name: a.name?.substring(0, 30) + '...'
-            })));
-        }
     }
-    
+
     // FALLBACK: Try to reconstruct article from weight database if available
     if (!article && typeof window.weightDatabase !== 'undefined') {
-        console.log(`🔍 Trying weight database fallback for ID: ${articleId}`);
         // Extract code from articleId (assuming format like "code-timestamp" or just "code")
         const possibleCodes = [
             articleId,
             articleId.split('-')[0], // If format is "code-timestamp"
             articleId.replace(/[^a-zA-Z0-9]/g, '') // Remove special characters
         ];
-        
+
         for (const code of possibleCodes) {
             if (window.weightDatabase.has(code)) {
-                console.log(`✅ Found weight database entry for code: ${code}`);
                 // Create a minimal article object from weight database
                 article = {
                     id: articleId,
@@ -893,7 +835,6 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
                     source: 'LAGER', // Assume LAGER since it's in weight DB
                     price: 0 // Will be filled from input
                 };
-                console.log(`🔧 Created fallback article:`, article);
                 break;
             }
         }
@@ -933,16 +874,13 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
         finalWeight = window.weightDatabase.get(article.code);
         isHistoricalWithWeight = true;
         isOurArticle = true; // Override for calculation purposes
-        console.log(`📅✅ Historical article found in weight database: ${article.code} = ${finalWeight}kg`);
     } else if (isOurArticle) {
         // For truly our articles, prioritize input weight if modified, otherwise use database/extraction
         if (inputWeight > 0) {
             finalWeight = inputWeight;
-            console.log(`🏠📝 Our article with manual weight: ${article.code} = ${finalWeight}kg`);
         } else {
-            finalWeight = extractWeight(article.name, article.unit, article.code, article.source) || 
+            finalWeight = extractWeight(article.name, article.unit, article.code, article.source) ||
                          article.calculatedWeight || article.weight || 1;
-            console.log(`🏠🔧 Our article with auto weight: ${article.code} = ${finalWeight}kg`);
         }
     } else {
         // For external articles (including historical without weight database match)
@@ -950,7 +888,6 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
             // Historical article not in weight database - check if user entered weight
             if (inputWeight > 0) {
                 finalWeight = inputWeight;
-                console.log(`📅📝 Historical article manual weight: ${article.code} = ${finalWeight}kg`);
             } else {
                 alert('Molimo unesite težinu za prošlogodišnji artikl koji nije u bazi težina!');
                 if (weightInput) weightInput.focus();
@@ -960,10 +897,8 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
             // Priority: Use weight from input field if provided, otherwise fallback to calculated/stored weight
             if (inputWeight > 0) {
                 finalWeight = inputWeight;
-                console.log(`📋📝 External article manual weight: ${article.code} = ${finalWeight}kg`);
             } else {
                 finalWeight = article.calculatedWeight || article.weight || 0;
-                console.log(`📋🔧 External article auto weight: ${article.code} = ${finalWeight}kg`);
             }
         }
     }
@@ -1023,12 +958,6 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
         results.splice(existingIndex, 1);
     }
 
-    // JEBENI DEBUG: Check if this is a weight database article
-    console.log(`🔥 JEBENI DEBUG: Adding result - Article:`, article);
-    console.log(`🔥 JEBENI DEBUG: Article isFromWeightDatabase:`, article.isFromWeightDatabase);
-    console.log(`🔥 JEBENI DEBUG: Article source:`, article.source);
-    console.log(`🔥 JEBENI DEBUG: Input price:`, inputPrice);
-
     // CRITICAL PDV FIX: Get correct PDV stopa for "our articles"
     let finalPdvStopa = article.pdvStopa || 0;
 
@@ -1038,14 +967,12 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
             const pdvData = window.getArticleWeightAndPDV(article.code, article.name, article.unit, article.source);
             if (pdvData.pdvStopa > 0) {
                 finalPdvStopa = pdvData.pdvStopa;
-                console.log(`🎯 FIXED: Got PDV ${finalPdvStopa}% for our article ${article.code} from database`);
             }
         }
 
         // Alternative: Direct check in PDV database
         if (finalPdvStopa === 0 && typeof window.pdvDatabase !== 'undefined' && window.pdvDatabase.has(article.code)) {
             finalPdvStopa = window.pdvDatabase.get(article.code);
-            console.log(`🎯 FIXED: Got PDV ${finalPdvStopa}% for our article ${article.code} from PDV database`);
         }
     }
 
@@ -1053,7 +980,6 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
     if (!isOurArticle && finalPdvStopa === 0) {
         try {
             finalPdvStopa = await window.selectPDVRate(article.name);
-            console.log(`🏷️ User selected PDV rate: ${finalPdvStopa}% for external article "${article.name}"`);
         } catch (error) {
             console.error('Error in PDV selection dialog:', error);
             finalPdvStopa = 25; // Default fallback
@@ -1085,19 +1011,8 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
         // NEW: Mark that user has manually entered/modified weight to prevent auto-overwrite
         hasUserWeight: inputWeight > 0
     };
-    
-    console.log(`🔥 JEBENI DEBUG: Final resultItem:`, resultItem);
-    console.log(`🔥 JEBENI DEBUG: Final resultItem.isFromWeightDatabase:`, resultItem.isFromWeightDatabase);
-    console.log(`🔥 JEBENI DEBUG: Final resultItem.pricePerPiece:`, resultItem.pricePerPiece);
 
-    // JEBENI DEBUG: Provjeri flag prije dodavanja u results
-    console.log('🔥 JEBENI DEBUG: Adding to results array - isFromWeightDatabase:', resultItem.isFromWeightDatabase);
-    
     results.push(resultItem);
-    
-    // JEBENI DEBUG: Provjeri flag nakon dodavanja u results
-    const lastAdded = results[results.length - 1];
-    console.log('🔥 JEBENI DEBUG: After push to results - isFromWeightDatabase:', lastAdded.isFromWeightDatabase);
     
     const resultKey = `${articleId}-${targetRB}`;
     selectedResults.add(resultKey);
@@ -1157,46 +1072,32 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
  * NEW: Add as additional choice - nabavna opcija (Nabavna 2 + Dobavljač 2)
  */
 function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
-    console.log(`🔍 DEBUG addAsAdditionalChoice: Looking for articleId "${articleId}"`);
-    console.log(`📊 autocompleteResults length: ${autocompleteResults.length}`);
-    console.log(`📝 autocompleteResults IDs:`, autocompleteResults.map(a => a.id));
-    console.log(`📊 main articles length: ${typeof articles !== 'undefined' ? articles.length : 'undefined'}`);
-    
     // Try to find the article in main articles array first, then in autocomplete results
     let article = null;
-    
+
     // ENHANCED SEARCH LOGIC: Try multiple sources
     // Fix: Convert articleId to number for comparison since article.id is numeric
     const articleIdNum = parseInt(articleId);
-    
+
     if (typeof articles !== 'undefined' && articles.length > 0) {
         article = articles.find(a => a.id === articleIdNum);
-        if (article) {
-            console.log(`✅ Found article in main articles array:`, article);
-        }
     }
-    
+
     if (!article && autocompleteResults.length > 0) {
-        console.log(`🔍 Searching in autocomplete results...`);
         article = autocompleteResults.find(a => a.id === articleIdNum);
-        if (article) {
-            console.log(`✅ Found article in autocompleteResults:`, article);
-        }
     }
-    
+
     // FALLBACK: Try to reconstruct article from weight database if available
     if (!article && typeof window.weightDatabase !== 'undefined') {
-        console.log(`🔍 Trying weight database fallback for ID: ${articleId}`);
         // Extract code from articleId (assuming format like "code-timestamp" or just "code")
         const possibleCodes = [
             articleId,
             articleId.split('-')[0], // If format is "code-timestamp"
             articleId.replace(/[^a-zA-Z0-9]/g, '') // Remove special characters
         ];
-        
+
         for (const code of possibleCodes) {
             if (window.weightDatabase.has(code)) {
-                console.log(`✅ Found weight database entry for code: ${code}`);
                 // Create a minimal article object from weight database
                 article = {
                     id: articleId,
@@ -1206,7 +1107,6 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
                     source: 'LAGER', // Assume LAGER since it's in weight DB
                     price: 0 // Will be filled from input
                 };
-                console.log(`🔧 Created fallback article:`, article);
                 break;
             }
         }
@@ -1246,14 +1146,11 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
         finalWeight = window.weightDatabase.get(article.code);
         isHistoricalWithWeight = true;
         isOurArticle = true; // Override for calculation purposes
-        console.log(`📅✅ Historical article (additional) found in weight database: ${article.code} = ${finalWeight}kg`);
     } else if (isOurArticle) {
-        finalWeight = extractWeight(article.name, article.unit, article.code, article.source) || 
+        finalWeight = extractWeight(article.name, article.unit, article.code, article.source) ||
                      article.calculatedWeight || article.weight || 1;
-        // // console.log(`✅ Our article weight (additional): ${finalWeight}kg for ${article.code}`);
     } else {
         finalWeight = article.calculatedWeight || article.weight || 0;
-        // // console.log(`📝 External article weight (additional): ${finalWeight}kg for ${article.code}`);
     }
 
     // UPDATE TROŠKOVNIK - Only if not PENDING

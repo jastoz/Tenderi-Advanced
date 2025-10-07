@@ -1,0 +1,46 @@
+# Test files and directories
+/tests/
+/test-results/
+/playwright-report/
+playwright.config.ts
+*.test.js
+*test*.html
+*test*.js
+*_test.js
+test_*.js
+test-*.json
+test-*.xml
+
+# Development and build files
+node_modules/
+.git/
+.claude/
+.DS_Store
+*.log
+server.log
+
+# Documentation files
+README.md
+SETUP.md
+CLAUDE.md
+*.md
+MANUAL_TEST_INSTRUCTIONS*.md
+IMPLEMENTATION_SUMMARY.md
+GOOGLE_DRIVE_SETUP.md
+GOOGLE_SHEETS_INTEGRATION.md
+UPDATE_URL_INSTRUCTIONS.md
+
+# Development scripts
+browser_*.js
+comprehensive_test.js
+pdv_*.js
+quick_*.js
+debug.js
+
+# Package files (only needed for development)
+package-lock.json
+
+# Temporary files
+expanded_tablica_test.html
+manual_entry_test.html
+quick_pdv_test.html
