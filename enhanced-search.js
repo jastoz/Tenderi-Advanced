@@ -20,32 +20,23 @@ function isOurArticle(source) {
 }
 
 /**
- * NEW: Enhanced function to determine if article is truly "ours" 
- * ENHANCED LOGIC: Must have correct source AND exist in weight database
+ * NEW: Enhanced function to determine if article is truly "ours"
+ * SIMPLIFIED LOGIC: Only checks if source contains LAGER or URPD
+ * NOTE: Weight database is NOT required - article is "ours" based on source alone
  */
 function isTrulyOurArticle(source, code) {
-    if (!source || !code) return false;
-    
-    // First check: source must be LAGER or URPD
+    if (!source) {
+        console.log('[SEARCH] ❌ isTrulyOurArticle: NO SOURCE for code:', code);
+        return false;
+    }
+
+    // Check: source must be LAGER or URPD
     const src = source.toLowerCase();
-    const hasCorrectSource = src.includes('lager') || src.includes('urpd');
-    
-    if (!hasCorrectSource) {
-        // // console.log(`❌ Not our article: ${code} (source: ${source}) - wrong source`);
-        return false;
-    }
-    
-    // Second check: code must exist in weight database
-    const existsInWeightDb = typeof window.weightDatabase !== 'undefined' && 
-                            window.weightDatabase.has(code);
-    
-    if (!existsInWeightDb) {
-        // // console.log(`❌ Not our article: ${code} (source: ${source}) - not in weight database`);
-        return false;
-    }
-    
-    // // console.log(`✅ Truly our article: ${code} (source: ${source}) - correct source + in weight DB`);
-    return true;
+    const result = src.includes('lager') || src.includes('urpd');
+
+    console.log('[SEARCH]', result ? '✅' : '❌', 'isTrulyOurArticle for', code, '| source:', source, '| result:', result);
+
+    return result;
 }
 
 /**
@@ -360,6 +351,16 @@ function performLiveSearch(query) {
                 }
             }
         }
+
+        // OUR ARTICLES filter - filter out LAGER/URPD if checkbox is unchecked
+        if (!window.ourArticlesFilterEnabled) {
+            searchResults = searchResults.filter(item => {
+                const source = (item.source || '').toLowerCase();
+                // Exclude if source contains 'lager' or 'urpd'
+                return !(source.includes('lager') || source.includes('urpd'));
+            });
+        }
+
         // ROTO filter
         if (!window.rotoFilterEnabled) {
             searchResults = searchResults.filter(item => {
@@ -372,11 +373,11 @@ function performLiveSearch(query) {
                 return true;
             });
         }
-        const filteredResults = searchResults.filter(item => 
+        const filteredResults = searchResults.filter(item =>
             !excludedArticles.has(item.id)
         );
-        
-        return filteredResults.slice(0, 12);
+
+        return filteredResults.slice(0, 24);
     } catch (error) {
         console.error('Live search error:', error);
         return [];
@@ -441,7 +442,8 @@ function showAutocomplete(results, inputElement) {
         const weight = item.calculatedWeight ? formatDecimalHR(item.calculatedWeight) + 'kg' : '';
         const formattedDate = item.date ? new Date(item.date).toLocaleDateString('hr-HR') : 'N/A';
         const isOur = isTrulyOurArticle(item.source, item.code);
-        // Ispravka: zelena boja samo za NAŠE artikle s težinom iz baze
+        // ISPRAVKA: Zelena boja za težinu SAMO ako je NAŠ artikl I ima težinu u weightDatabase
+        // Ovo je samo za COLOR CODING težine, ne utječe na badge
         const isWeightFromDB = isOur && isWeightFromDatabase(item.code);
         
         // Get last year's price for reference
@@ -630,22 +632,43 @@ function handlePriceFocus(inputElement, lastYearPrice) {
     });
 }
 
-function handlePriceKeydown(event, articleId, targetRB, isOurArticle) {
+async function handlePriceKeydown(event, articleId, targetRB, isOurArticle) {
     if (event.key === 'Enter') {
         event.preventDefault();
-        
+        event.stopPropagation(); // FIXED: Prevent event bubbling to main search handler
+
         const priceInput = event.target;
         const hasPrice = priceInput.value && priceInput.value.trim() !== '';
-        
+
+        console.log(`🔑 Enter pressed in price input: articleId=${articleId}, targetRB=${targetRB}, hasPrice=${hasPrice}, isOurArticle=${isOurArticle}`);
+
+        // Visual feedback - briefly highlight the input
+        priceInput.style.boxShadow = '0 0 10px #10b981';
+        setTimeout(() => {
+            priceInput.style.boxShadow = '';
+        }, 300);
+
         if (hasPrice) {
             // Show price comparison before adding
             showPriceComparison(articleId, priceInput.value);
-            
+
             // Price + Enter = First choice (goes to troškovnik)
-            addAsFirstChoice(articleId, targetRB, isOurArticle);
+            console.log(`➡️ Adding as first choice: ${articleId} with price ${priceInput.value}`);
+            await addAsFirstChoice(articleId, targetRB, isOurArticle);
+
+            // Close autocomplete after successful addition
+            setTimeout(() => {
+                forceCloseAutocomplete();
+            }, 100);
         } else {
             // Empty + Enter = Additional choice (nabavna opcija)
+            console.log(`➡️ Adding as additional choice: ${articleId} (no price)`);
             addAsAdditionalChoice(articleId, targetRB, isOurArticle);
+
+            // Close autocomplete after successful addition
+            setTimeout(() => {
+                forceCloseAutocomplete();
+            }, 100);
         }
     }
 }
@@ -702,6 +725,8 @@ function showPriceComparison(articleId, currentPrice) {
 function handleWeightKeydown(event, articleId, targetRB) {
     if (event.key === 'Enter') {
         event.preventDefault();
+        event.stopPropagation(); // FIXED: Prevent event bubbling to main search handler
+
         const priceInput = document.getElementById(`price-${articleId}-${targetRB}`);
         if (priceInput) {
             priceInput.focus();
@@ -712,8 +737,9 @@ function handleWeightKeydown(event, articleId, targetRB) {
 
 /**
  * NEW: Add as first choice - goes to troškovnik (Izlazna + Nabavna 1 + Dobavljač 1)
+ * ENHANCED: PDV selection dialog for non-"NAŠ" articles
  */
-function addAsFirstChoice(articleId, targetRB, isOurArticle) {
+async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
     // IMPORTANT: Don't allow adding to troškovnik if RB is PENDING
     if (targetRB === "PENDING") {
         alert('Ne možete dodati u troškovnik bez rednog broja!\n\nRezultat će biti dodan u neklasificirane rezultate.\nNakon toga možete ga premjestiti u odgovarajući RB.');
@@ -994,7 +1020,7 @@ function addAsFirstChoice(articleId, targetRB, isOurArticle) {
 
     // CRITICAL PDV FIX: Get correct PDV stopa for "our articles"
     let finalPdvStopa = article.pdvStopa || 0;
-    
+
     if (isOurArticle && article.code && finalPdvStopa === 0) {
         // Try to get PDV from weight/PDV database for our articles
         if (typeof window.getArticleWeightAndPDV === 'function') {
@@ -1004,11 +1030,22 @@ function addAsFirstChoice(articleId, targetRB, isOurArticle) {
                 console.log(`🎯 FIXED: Got PDV ${finalPdvStopa}% for our article ${article.code} from database`);
             }
         }
-        
+
         // Alternative: Direct check in PDV database
         if (finalPdvStopa === 0 && typeof window.pdvDatabase !== 'undefined' && window.pdvDatabase.has(article.code)) {
             finalPdvStopa = window.pdvDatabase.get(article.code);
             console.log(`🎯 FIXED: Got PDV ${finalPdvStopa}% for our article ${article.code} from PDV database`);
+        }
+    }
+
+    // ENHANCED: PDV selection for non-"NAŠ" articles
+    if (!isOurArticle && finalPdvStopa === 0) {
+        try {
+            finalPdvStopa = await window.selectPDVRate(article.name);
+            console.log(`🏷️ User selected PDV rate: ${finalPdvStopa}% for external article "${article.name}"`);
+        } catch (error) {
+            console.error('Error in PDV selection dialog:', error);
+            finalPdvStopa = 25; // Default fallback
         }
     }
 
@@ -1381,9 +1418,9 @@ function updateAdditionalChoicesForRB(targetRB) {
 /**
  * UPDATED: Add with price function - now calls first choice logic
  */
-function addWithPriceFromAutocomplete(articleId, targetRB, isOurArticle) {
+async function addWithPriceFromAutocomplete(articleId, targetRB, isOurArticle) {
     // ✅ Button click = First choice (same as Enter with price)
-    addAsFirstChoice(articleId, targetRB, isOurArticle);
+    await addAsFirstChoice(articleId, targetRB, isOurArticle);
 }
 
 /**
@@ -1561,6 +1598,16 @@ function performGlobalSearch() {
         }
         
         let searchResults = searchArticles(window.articles, parsedQuery);
+
+        // OUR ARTICLES filter - filter out LAGER/URPD if checkbox is unchecked
+        if (!window.ourArticlesFilterEnabled) {
+            searchResults = searchResults.filter(item => {
+                const source = (item.source || '').toLowerCase();
+                // Exclude if source contains 'lager' or 'urpd'
+                return !(source.includes('lager') || source.includes('urpd'));
+            });
+        }
+
         // ROTO filter
         if (!window.rotoFilterEnabled) {
             searchResults = searchResults.filter(item => {
@@ -1969,6 +2016,24 @@ window.performLiveSearch = performLiveSearch;
 window.searchProslogodisnjeCijene = searchProslogodisnjeCijene;
 window.handleHistoryPriorityChange = handleHistoryPriorityChange;
 window.createArticleFromWeightDatabase = createArticleFromWeightDatabase;
+
+// Globalna varijabla za filter "Prikaži NAŠE artikle (LAGER/URPD)"
+window.ourArticlesFilterEnabled = true;
+window.setOurArticlesFilterEnabled = function(enabled) {
+    window.ourArticlesFilterEnabled = enabled;
+    // Trigger refresh of autocomplete if active
+    const globalSearchInput = document.getElementById('globalSearchInput');
+    if (globalSearchInput && globalSearchInput.value.trim().length >= 2) {
+        const results = performLiveSearch(globalSearchInput.value.trim());
+        if (results && results.length > 0) {
+            showAutocomplete(results, globalSearchInput);
+        } else {
+            forceCloseAutocomplete();
+        }
+    }
+    if (typeof updateResultsDisplay === 'function') updateResultsDisplay();
+};
+
 window.rotoFilterEnabled = true;
 window.setRotoFilterEnabled = function(enabled) {
     window.rotoFilterEnabled = enabled;

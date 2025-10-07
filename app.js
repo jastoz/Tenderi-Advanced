@@ -132,21 +132,24 @@ function initializeStickySearchAutocomplete() {
 function initializeEnhancedEventListeners() {
     // Enhanced article identification function
     window.isTrulyOurArticle = function(source, code) {
-        if (!source || !code) return false;
-        
-        // First check: source must be LAGER or URPD
+        if (!source) return false;
+
+        // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
         const lowerSource = source.toLowerCase();
-        const hasCorrectSource = lowerSource.includes('lager') || lowerSource.includes('urpd');
-        
-        if (!hasCorrectSource) {
-            return false;
+        const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
+
+        if (isLagerOrUrpd) {
+            return true; // ✅ LAGER/URPD sheetovi su uvijek naši
         }
-        
-        // Second check: code must exist in weight database
-        const existsInWeightDb = typeof window.weightDatabase !== 'undefined' && 
-                                window.weightDatabase.has(code);
-        
-        return existsInWeightDb;
+
+        // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
+        // Ovo će biti true samo za artikle dodane direktno iz weightDatabase (format sa zagradama)
+        const isDirectWeightDbArticle = code &&
+                                       typeof window.weightDatabase !== 'undefined' &&
+                                       window.weightDatabase.has(code) &&
+                                       lowerSource.includes('weight database');
+
+        return isDirectWeightDbArticle;
     };
 
     // Enhanced keyboard shortcuts for new functionality
