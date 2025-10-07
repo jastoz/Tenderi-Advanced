@@ -104,6 +104,14 @@ function processCSVFile(file) {
             if (typeof window.reclassifyResultsAfterStateLoad === 'function') {
                 console.log('🔄 Re-classifying existing results after CSV load...');
                 window.reclassifyResultsAfterStateLoad();
+                console.log('✅ Results re-classified successfully');
+
+                // CRITICAL: Refresh results display to show correct colors immediately
+                if (typeof window.updateResultsDisplay === 'function') {
+                    console.log('🎨 Refreshing results display with new colors...');
+                    window.updateResultsDisplay();
+                    console.log('✅ Results display refreshed - colors should be correct now!');
+                }
             }
 
             showMessage('success',
@@ -384,6 +392,14 @@ function processFile(file) {
             if (typeof window.reclassifyResultsAfterStateLoad === 'function') {
                 console.log('🔄 Re-classifying existing results after price list load...');
                 window.reclassifyResultsAfterStateLoad();
+                console.log('✅ Results re-classified successfully');
+
+                // CRITICAL: Refresh results display to show correct colors immediately
+                if (typeof window.updateResultsDisplay === 'function') {
+                    console.log('🎨 Refreshing results display with new colors...');
+                    window.updateResultsDisplay();
+                    console.log('✅ Results display refreshed - colors should be correct now!');
+                }
             }
 
             // SHOW SUCCESS WITH ENHANCED INFO

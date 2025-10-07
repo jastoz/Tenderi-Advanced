@@ -411,7 +411,7 @@ function getBadgeClass(source) {
     const lowerSource = source.toLowerCase();
     if (lowerSource.includes('lager')) return 'badge-green';
     if (lowerSource.includes('urpd')) return 'badge-green'; // FIXED: URPD is also "our article" - green badge
-    return 'badge-blue';
+    return 'badge-purple'; // FIXED: Vanjski artikli su ljubičasti, ne plavi
 }
 
 /**
@@ -827,6 +827,7 @@ window.getSourceColor = getSourceColor;
 window.getBadgeClass = getBadgeClass;
 window.parseSourceName = parseSourceName;
 window.isOurArticle = isOurArticle;
+window.isTrulyOurArticle = isTrulyOurArticle; // ADDED: Export enhanced article detection
 window.validatePrice = validatePrice;
 window.formatPrice = formatPrice;
 window.calculatePricePerKg = calculatePricePerKg;

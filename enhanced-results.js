@@ -184,7 +184,7 @@ function calculateTotalPurchasingValue(groupedResults) {
 function updateResultsDisplay() {
     const container = document.getElementById('resultsContainer');
     const exportBtn = document.getElementById('exportBtn');
-    
+
     try {
         if (results.length === 0) {
             container.innerHTML = '<div style="text-align: center; padding: 40px; color: #6b7280;">' +
@@ -365,7 +365,7 @@ function updateResultsDisplay() {
                 const resultKey = item.id + '-' + item.rb;
                 const isSelected = selectedResults.has(resultKey);
                 const isOurArticle = isTrulyOurArticle(item.source, item.code);
-                
+
                 let formattedDate = 'N/A';
                 try {
                     if (item.date) {
@@ -387,7 +387,7 @@ function updateResultsDisplay() {
                         // Our articles - green theme
                         rowStyle = 'background: linear-gradient(90deg, #dcfce7 0%, #f0fdf4 100%); border-left: 5px solid #16a34a; line-height: 0.9; height: 35px;';
                     } else {
-                        // External articles - purple theme  
+                        // External articles - purple theme
                         rowStyle = 'background: linear-gradient(90deg, #ede9fe 0%, #f3f4f6 100%); border-left: 5px solid #7c3aed; line-height: 0.9; height: 35px;';
                     }
                 } else {
@@ -395,14 +395,14 @@ function updateResultsDisplay() {
                         // Manual entries unselected - light orange
                         rowStyle = 'background: #fffbeb; opacity: 0.8; line-height: 0.9; height: 35px;';
                     } else if (isOurArticle) {
-                        // Our articles unselected - light green
-                        rowStyle = 'background: #f7fee7; opacity: 0.8; line-height: 0.9; height: 35px;';
+                        // Our articles unselected - STRONGER GREEN (not pale yellow-green)
+                        rowStyle = 'background: #dcfce7; opacity: 1.0; line-height: 0.9; height: 35px; border-left: 2px solid #16a34a;';
                     } else {
                         // External articles unselected - light purple
-                        rowStyle = 'background: #faf7ff; opacity: 0.8; line-height: 0.9; height: 35px;';
+                        rowStyle = 'background: #e9d5ff; opacity: 1.0; line-height: 0.9; height: 35px; border-left: 2px solid #7c3aed;';
                     }
                 }
-                    
+
                 const price = item.price || 0;
                 const calculatedWeight = item.calculatedWeight || item.weight || extractWeight(item.name, item.unit) || 0;
                 const originalPricePerKg = calculatedWeight > 0 ? price / calculatedWeight : 0;
@@ -536,10 +536,8 @@ function updateResultsDisplay() {
                         '<div style="font-size: 11px; color: #16a34a; line-height: 0.8;">' + pdvDisplay + '</div></td>';
                 }
                 
-                // DEBUG: Log badge rendering
                 const isOur = isTrulyOurArticle(item.source, item.code);
                 const badgeClass = getBadgeClass(item.source);
-                console.log('🎨 BADGE RENDER:', item.code, '| source:', item.source, '| isOur:', isOur, '| badgeClass:', badgeClass);
 
                 html += '<td style="padding: 1px; font-size: 13px; text-align: center; line-height: 0.9; vertical-align: middle;">' + formattedDate + '</td>' +
                     '<td style="padding: 1px; text-align: center; vertical-align: middle;">' +
