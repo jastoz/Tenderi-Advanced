@@ -448,13 +448,13 @@ function updateResultsDisplay() {
                         '<div class="price-input-label" style="font-size: 12px; color: #16a34a; line-height: 0.8; font-weight: 700;">€/kom</div>' +
                         '<input type="number" step="0.01" value="' + userPricePerPiece.toFixed(2) + '" class="' + pieceClass + '" ' +
                         'onchange="updateResultPrice(\'' + resultKey + '\', \'pricePerPiece\', this.value)" onfocus="this.select()" placeholder="0.00" title="Unesite izlaznu cijenu po komadu" ' +
-                        'style="width: 80px; padding: 1px; border: 2px solid #16a34a; border-radius: 3px; font-size: 14px; line-height: 0.9; font-weight: 700;">' +
+                        'style="width: 80px; padding: 1px; border: 2px solid #16a34a; background: #ecfdf5; color: #16a34a; border-radius: 3px; font-size: 14px; line-height: 0.9; font-weight: 700;">' +
                         '<div class="price-sync-indicator" style="font-size: 10px; color: #16a34a; line-height: 0.8; font-weight: 600;">' + (item.hasUserPrice && item.userPriceType === 'pricePerPiece' ? '✓' : '↻') + '</div></div></td>' +
                         '<td style="padding: 1px; vertical-align: middle;"><div class="price-input-group">' +
                         '<div class="price-input-label" style="font-size: 12px; color: #16a34a; line-height: 0.8; font-weight: 700;">€/kg</div>' +
                         '<input type="number" step="0.01" value="' + userPricePerKg.toFixed(2) + '" class="' + kgClass + '" ' +
                         'onchange="updateResultPrice(\'' + resultKey + '\', \'pricePerKg\', this.value)" onfocus="this.select()" placeholder="0.00" title="Unesite izlaznu cijenu po kilogramu" ' +
-                        'style="width: 80px; padding: 1px; border: 2px solid #16a34a; border-radius: 3px; font-size: 14px; line-height: 0.9; font-weight: 700;">' +
+                        'style="width: 80px; padding: 1px; border: 2px solid #16a34a; background: #ecfdf5; color: #16a34a; border-radius: 3px; font-size: 14px; line-height: 0.9; font-weight: 700;">' +
                         '<div class="price-sync-indicator" style="font-size: 10px; color: #16a34a; line-height: 0.8; font-weight: 600;">' + (item.hasUserPrice && item.userPriceType === 'pricePerKg' ? '✓' : '↻') + '</div></div></td>';
                 } else {
                     html += item.hasUserPrice ?
