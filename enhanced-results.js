@@ -993,8 +993,9 @@ window.validatePrice = validatePrice;
 window.movePendingToRB = movePendingToRB;
 
 /**
- * NEW: Re-classify all results after state load
+ * NEW: Re-classify all results after state load or price list load
  * This ensures proper green/purple colors for LAGER/URPD articles
+ * IMPROVED: Always sets isOurArticle flag, not just when changed
  */
 function reclassifyResultsAfterStateLoad() {
     if (!results || results.length === 0) {
@@ -1002,25 +1003,39 @@ function reclassifyResultsAfterStateLoad() {
         return;
     }
 
-    console.log('🔄 Re-classifying', results.length, 'results after state load...');
+    console.log('🔄 Re-classifying', results.length, 'results...');
 
-    let reclassified = 0;
+    let updated = 0;
+    let lagerUrpdCount = 0;
+    let externalCount = 0;
+
     results.forEach(result => {
         if (result.source) {
             // Re-evaluate classification using current isTrulyOurArticle logic
             const wasOur = result.isOurArticle || false;
             const isNowOur = isTrulyOurArticle(result.source, result.code);
 
-            // Update classification if changed
+            // IMPROVED: ALWAYS update the flag (not just when changed)
+            result.isOurArticle = isNowOur;
+
             if (wasOur !== isNowOur) {
-                result.isOurArticle = isNowOur;
-                reclassified++;
-                console.log(`  ✅ Reclassified: ${result.name} | ${result.source} | Was: ${wasOur} → Now: ${isNowOur}`);
+                updated++;
+                console.log(`  ✅ Changed: ${result.name} | ${result.source} | Was: ${wasOur} → Now: ${isNowOur}`);
+            }
+
+            // Count for statistics
+            if (isNowOur) {
+                lagerUrpdCount++;
+            } else {
+                externalCount++;
             }
         }
     });
 
-    console.log(`✅ Reclassified ${reclassified} results`);
+    console.log(`✅ Re-classification complete:`);
+    console.log(`   - Changed: ${updated} results`);
+    console.log(`   - 🏠 NAŠ (LAGER/URPD): ${lagerUrpdCount}`);
+    console.log(`   - 📋 PO CJENIKU (external): ${externalCount}`);
 
     // Force refresh display to show new colors
     if (typeof updateResultsDisplay === 'function') {

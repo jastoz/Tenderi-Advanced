@@ -97,10 +97,16 @@ function processCSVFile(file) {
             const oldCount = articles.length;
             addArticles(allArticles);
             const newCount = articles.length;
-            
+
             updateArticleStats();
-            
-            showMessage('success', 
+
+            // CRITICAL: Re-classify existing results after loading CSV price lists
+            if (typeof window.reclassifyResultsAfterStateLoad === 'function') {
+                console.log('🔄 Re-classifying existing results after CSV load...');
+                window.reclassifyResultsAfterStateLoad();
+            }
+
+            showMessage('success',
                 `✅ CSV uspješno učitan!\n\n` +
                 `📁 ${file.name}\n` +
                 `📊 Obrađeno redova: ${processedCount}\n` +
@@ -373,8 +379,15 @@ function processFile(file) {
                 return isOur && weightDatabase && weightDatabase.has(article.code);
             }).length;
             
+            // CRITICAL: Re-classify existing results after loading price lists
+            // This ensures proper green/purple colors for LAGER/URPD articles
+            if (typeof window.reclassifyResultsAfterStateLoad === 'function') {
+                console.log('🔄 Re-classifying existing results after price list load...');
+                window.reclassifyResultsAfterStateLoad();
+            }
+
             // SHOW SUCCESS WITH ENHANCED INFO
-            showMessage('success', 
+            showMessage('success',
                 '✅ USPJEH! Učitano ' + allArticles.length + ' artikala iz ' + workbook.SheetNames.length + ' sheetova!\n\n' +
                 summaryText +
                 '📊 Ukupno u bazi: ' + newCount + '\n' +
