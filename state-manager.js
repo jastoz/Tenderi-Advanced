@@ -621,6 +621,16 @@ function deserializeAppState(state) {
             console.warn('⚠️ updateExistingResultsWithWeights not available - results may not have proper weights');
         }
 
+        // CRITICAL: Re-classify all results to ensure proper green/purple colors
+        // This fixes the issue where loaded results don't have correct classification
+        if (typeof window.reclassifyResultsAfterStateLoad === 'function') {
+            console.log('🔄 Re-classifying results after state load...');
+            window.reclassifyResultsAfterStateLoad();
+            console.log('✅ Results re-classified with current isTrulyOurArticle logic');
+        } else {
+            console.warn('⚠️ reclassifyResultsAfterStateLoad not available - results may have old classification');
+        }
+
         // CRITICAL: Refresh results display AFTER weight/PDV updates to show correct colors
         // Use timeout to ensure all database operations are complete
         setTimeout(() => {
@@ -633,7 +643,7 @@ function deserializeAppState(state) {
                     console.log('   - Sample test 641:', window.isTrulyOurArticle('12.09.2025 Vagros Anex (1) - Lager', '641'));
                     console.log('   - Sample test 6617:', window.isTrulyOurArticle('12.09.2025 Vagros Anex (1) - Urpd', '6617'));
                 }
-                
+
                 updateResultsDisplay();
                 console.log('✅ Results display refreshed after weight/PDV classification updates');
             } else {
@@ -820,7 +830,7 @@ function saveAppState() {
             
             // Generate filename using tender header data
             const filenames = generateTenderFilenames('Stanje', 'json');
-            const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Stanje.json`;
+            const filename = `${filenames.datumPredaje}_${filenames.cleanGrupa}_${filenames.cleanKupac}_Stanje.json`;
             
             // Create and download JSON file
             const jsonString = JSON.stringify(state, null, 2);
@@ -1422,7 +1432,7 @@ async function saveStateToLocalFile() {
         if ('showSaveFilePicker' in window) {
             try {
                 const fileHandle = await window.showSaveFilePicker({
-                    suggestedName: `${generateTenderFilenames('Stanje', 'json').cleanKupac || 'Kupac'}_${generateTenderFilenames('Stanje', 'json').cleanGrupa || 'Grupa'}_${generateTenderFilenames('Stanje', 'json').datumPredaje}_Stanje.json`,
+                    suggestedName: `${generateTenderFilenames('Stanje', 'json').datumPredaje}_${generateTenderFilenames('Stanje', 'json').cleanGrupa || 'Grupa'}_${generateTenderFilenames('Stanje', 'json').cleanKupac || 'Kupac'}_Stanje.json`,
                     types: [{
                         description: 'OPTIMIZIRANE JSON datoteke',
                         accept: { 'application/json': ['.json'] }
@@ -1452,7 +1462,7 @@ async function saveStateToLocalFile() {
         } else {
             // Fallback to traditional download
             const filenames = generateTenderFilenames('Stanje', 'json');
-            const filename = `${filenames.cleanKupac}_${filenames.cleanGrupa}_${filenames.datumPredaje}_Stanje.json`;
+            const filename = `${filenames.datumPredaje}_${filenames.cleanGrupa}_${filenames.cleanKupac}_Stanje.json`;
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;

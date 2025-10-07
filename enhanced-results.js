@@ -992,6 +992,45 @@ window.isOurArticle = isOurArticle;
 window.validatePrice = validatePrice;
 window.movePendingToRB = movePendingToRB;
 
+/**
+ * NEW: Re-classify all results after state load
+ * This ensures proper green/purple colors for LAGER/URPD articles
+ */
+function reclassifyResultsAfterStateLoad() {
+    if (!results || results.length === 0) {
+        console.log('⚠️ No results to reclassify');
+        return;
+    }
+
+    console.log('🔄 Re-classifying', results.length, 'results after state load...');
+
+    let reclassified = 0;
+    results.forEach(result => {
+        if (result.source) {
+            // Re-evaluate classification using current isTrulyOurArticle logic
+            const wasOur = result.isOurArticle || false;
+            const isNowOur = isTrulyOurArticle(result.source, result.code);
+
+            // Update classification if changed
+            if (wasOur !== isNowOur) {
+                result.isOurArticle = isNowOur;
+                reclassified++;
+                console.log(`  ✅ Reclassified: ${result.name} | ${result.source} | Was: ${wasOur} → Now: ${isNowOur}`);
+            }
+        }
+    });
+
+    console.log(`✅ Reclassified ${reclassified} results`);
+
+    // Force refresh display to show new colors
+    if (typeof updateResultsDisplay === 'function') {
+        updateResultsDisplay();
+        console.log('✅ Results display refreshed with new classifications');
+    }
+}
+
+window.reclassifyResultsAfterStateLoad = reclassifyResultsAfterStateLoad;
+
 // console.log('✅ FIXED Enhanced results module loaded:');
 // console.log('🎨 FIXED: All red colors changed to purple (#7c3aed)');
 // console.log('💰 FIXED: Nabavna vrijednost color changed to purple');
