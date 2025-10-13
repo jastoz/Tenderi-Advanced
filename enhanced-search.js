@@ -9,41 +9,8 @@ let autocompleteResults = [];
 let selectedAutocompleteIndex = -1;
 let excludedArticles = new Set();
 
-/**
- * UPDATED: Helper function to determine if article is "ours" (internal)
- * OLD LOGIC: Only checks source
- */
-function isOurArticle(source) {
-    if (!source) return false;
-    const src = source.toLowerCase();
-    return src.includes('lager') || src.includes('urpd');
-}
-
-/**
- * NEW: Enhanced function to determine if article is truly "ours"
- * @param {string} source - Article source
- * @param {string} code - Article code (optional)
- * @returns {boolean} True if truly our article
- */
-function isTrulyOurArticle(source, code) {
-    if (!source) return false;
-
-    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
-    const lowerSource = source.toLowerCase();
-    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
-
-    if (isLagerOrUrpd) {
-        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
-    }
-
-    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
-    const isDirectWeightDbArticle = code &&
-                                   typeof window.weightDatabase !== 'undefined' &&
-                                   window.weightDatabase.has(code) &&
-                                   lowerSource.includes('weight database');
-
-    return isDirectWeightDbArticle;
-}
+// NOTE: Article classification is centrally defined in utils.js
+// Use window.isTrulyOurArticle(source, code) for all article type checks
 
 /**
  * NEW: Check if weight is from Google Sheets database (for color coding)
@@ -58,7 +25,7 @@ function isWeightFromDatabase(articleCode) {
  */
 function extractWeight(name, unit, articleCode, articleSource) {
     // Ako je NAŠ ARTIKL (LAGER/URPD i postoji u weightDatabase) koristi bazu
-    if (articleCode && typeof window.weightDatabase !== 'undefined' && window.weightDatabase.has(articleCode) && isTrulyOurArticle(articleSource, articleCode)) {
+    if (articleCode && typeof window.weightDatabase !== 'undefined' && window.weightDatabase.has(articleCode) && window.isTrulyOurArticle(articleSource, articleCode)) {
         const dbWeight = window.weightDatabase.get(articleCode);
         // // console.log(`✅ Weight from Google Sheets database: ${dbWeight}kg for ${articleCode}`);
         return dbWeight;
@@ -112,7 +79,7 @@ function extractWeight(name, unit, articleCode, articleSource) {
         const supplier = (articleSource || '').toLowerCase();
         const unitNorm = (unit || '').toLowerCase();
         // Ako nije naš, tip je Po cjeniku i jedinica je kg
-        if (unitNorm === 'kg' && (!isTrulyOurArticle(articleSource, articleCode))) {
+        if (unitNorm === 'kg' && (!window.isTrulyOurArticle(articleSource, articleCode))) {
             maxWeight = 1;
         }
     }
@@ -134,20 +101,31 @@ function parseSearchQuery(query) {
         let directCode = null; // NOVA FUNKCIONALNOST: direktna šifra iz zagrada
         let rbMatch = null;
         
-        // PROVJERA: Format s zagradama "33. (2245)" - jedini format za pretragu baze težina
+        // PROVJERA 1: Format s RB i zagradama "33. (2245)" - traži u bazi težina
         const codeInBracketsMatch = trimmed.match(/^(\d+)\.\s*\((\w+)\)$/);
         if (codeInBracketsMatch) {
             rb = parseInt(codeInBracketsMatch[1]);
             directCode = codeInBracketsMatch[2]; // Šifra iz zagrada - traži SAMO u bazi težina
-        } else {
-            // Standardni format "33. naziv proizvoda" ili "rb. tekst" - standardna pretraga
+        }
+
+        // NOVO: PROVJERA 2: Samo zagrade "(2245)" bez RB - koristi currentRB
+        if (!codeInBracketsMatch) {
+            const bracketsOnlyMatch = trimmed.match(/^\((\w+)\)$/);
+            if (bracketsOnlyMatch) {
+                directCode = bracketsOnlyMatch[1]; // Šifra iz zagrada
+                rb = null; // Kasnije će se koristiti currentRB u performLiveSearch
+            }
+        }
+
+        // PROVJERA 3: Standardni format "33. naziv proizvoda" ili "rb. tekst"
+        if (!codeInBracketsMatch && !directCode) {
             rbMatch = trimmed.match(/^(\d+)\.\s*/);
             if (rbMatch) {
                 rb = parseInt(rbMatch[1]);
             }
         }
         
-        const mainQuery = codeInBracketsMatch ? '' : // Za format s zagradama nema text pretrage
+        const mainQuery = (codeInBracketsMatch || directCode) ? '' : // Za format s zagradama nema text pretrage
                          rbMatch ? trimmed.substring(rbMatch[0].length).trim() : trimmed;
         
         // ENHANCED: Parse range query (e.g., "Ajvar 300-1000")
@@ -313,7 +291,8 @@ function performLiveSearch(query) {
         if (hasDirectCodeFromBrackets) {
             // SAMO pretraga baze težina za format s zagradama "22. (2232)"
             const directCode = parsedQuery.segments[0].directCode;
-            const targetRB = parsedQuery.segments[0].rb || "PENDING";
+            // NOVO: Koristi currentRB ako nema RB u query-u
+            const targetRB = parsedQuery.segments[0].rb || (typeof window.currentRB !== 'undefined' && window.currentRB > 0 ? window.currentRB : "PENDING");
             
             // console.log(`🔍 Direct code search (brackets only): ${directCode} for RB ${targetRB}`);
             
@@ -322,25 +301,9 @@ function performLiveSearch(query) {
                 // console.log(`✅ Found article from weight database: ${weightArticle.name}`);
                 searchResults = [weightArticle]; // Rezultat iz baze težina
             } else {
-                // Kreira prazni članak za ručni unos ako šifra ne postoji u bazi težina
-                const emptyArticle = {
-                    id: `manual_${directCode}_${targetRB}`,
-                    name: `Ručni unos - šifra ${directCode}`,
-                    code: directCode,
-                    unit: 'kom',
-                    price: 0, // Bez cijene - korisnik će ručno upisati
-                    supplier: 'Ručni unos',
-                    source: 'MANUAL_ENTRY',
-                    calculatedWeight: 0,
-                    weight: 0,
-                    pricePerKg: 0,
-                    rb: targetRB,
-                    isFromWeightDatabase: false,
-                    isManualEntry: true, // Specijalna oznaka za ručni unos
-                    tarifniBroj: '',
-                    pdvStopa: 0
-                };
-                searchResults = [emptyArticle]; // Prikaži za ručni unos
+                // Ako šifra ne postoji u bazi, ne prikazuj ništa (prazni rezultati)
+                // "Ručni unos" se odnosi SAMO na direktan unos u troškovnik, NE kroz tražilicu!
+                searchResults = [];
             }
             // Nema standardne pretrage za format s zagradama
         } else {
@@ -424,8 +387,10 @@ function showAutocomplete(results, inputElement) {
 
     const currentQuery = inputElement.value.trim();
     const parsedQuery = parseSearchQuery(currentQuery);
-    const targetRB = (parsedQuery.segments.length > 0 && parsedQuery.segments[0].rb) ? 
-                     parsedQuery.segments[0].rb : "PENDING";
+    // NOVO: Koristi currentRB ako nema RB u query-u
+    const targetRB = (parsedQuery.segments.length > 0 && parsedQuery.segments[0].rb) ?
+                     parsedQuery.segments[0].rb :
+                     (typeof window.currentRB !== 'undefined' && window.currentRB > 0 ? window.currentRB : "PENDING");
 
     // Check if range is active
     const hasRange = parsedQuery.segments.length > 0 && 
@@ -447,13 +412,17 @@ function showAutocomplete(results, inputElement) {
         const pricePerKg = item.pricePerKg ? '€' + formatDecimalHR(item.pricePerKg) + '/kg' : '';
         const weight = item.calculatedWeight ? formatDecimalHR(item.calculatedWeight) + 'kg' : '';
         const formattedDate = item.date ? new Date(item.date).toLocaleDateString('hr-HR') : 'N/A';
-        const isOur = isTrulyOurArticle(item.source, item.code);
+
+        // VIZUALNI PRIKAZ: Koristi isOurArticleVisual() za zeleno/ljubičasto
+        const isOur = window.isOurArticleVisual(item.source);
+
         // ISPRAVKA: Zelena boja za težinu SAMO ako je NAŠ artikl I ima težinu u weightDatabase
         // Ovo je samo za COLOR CODING težine, ne utječe na badge
         const isWeightFromDB = isOur && isWeightFromDatabase(item.code);
-        
-        // Get last year's price for reference
-        const lastYearPrice = window.getProslogodisnjaCijena ? window.getProslogodisnjaCijena(item.code) : null;
+
+        // ✅ Get last year's price ONLY for "NAŠ" articles (to prevent mixing with external articles)
+        const lastYearPrice = (isOur && window.getProslogodisnjaCijena) ?
+            window.getProslogodisnjaCijena(item.code) : null;
         
         // NOVA LOGIKA: Provjeri tip rezultat
         const isHistoricalResult = item.isHistorical === true;
@@ -659,10 +628,9 @@ async function handlePriceKeydown(event, articleId, targetRB, isOurArticle) {
             // Price + Enter = First choice (goes to troškovnik)
             await addAsFirstChoice(articleId, targetRB, isOurArticle);
 
-            // Close autocomplete after successful addition
-            setTimeout(() => {
-                forceCloseAutocomplete();
-            }, 100);
+            // OPCIJA A: NE zatvaraj autocomplete - korisnik može nastaviti dodavati
+            // Autocomplete će ostati otvoren i automatski se refreshati s Arrow Up/Down ili Option+W/E
+            console.log('✅ Autocomplete remains open for fast workflow');
         } else {
             // Empty + Enter = Additional choice (nabavna opcija)
             addAsAdditionalChoice(articleId, targetRB, isOurArticle);
@@ -681,7 +649,11 @@ async function handlePriceKeydown(event, articleId, targetRB, isOurArticle) {
 function showPriceComparison(articleId, currentPrice) {
     const article = articles.find(a => a.id === parseInt(articleId));
     if (!article) return;
-    
+
+    // ✅ Check if article is "NAŠ" before showing last year's price
+    const isOurArticle = window.isOurArticleVisual ? window.isOurArticleVisual(article.source) : false;
+    if (!isOurArticle) return; // Only show comparison for "NAŠ" articles
+
     const lastYearPrice = window.getProslogodisnjaCijena ? window.getProslogodisnjaCijena(article.code) : null;
     if (!lastYearPrice) return;
     
@@ -745,12 +717,46 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
     // IMPORTANT: Don't allow adding to troškovnik if RB is PENDING
     if (targetRB === "PENDING") {
         alert('Ne možete dodati u troškovnik bez rednog broja!\n\nRezultat će biti dodan u neklasificirane rezultate.\nNakon toga možete ga premjestiti u odgovarajući RB.');
-        
+
         // Instead, add as additional choice (goes to results only)
         addAsAdditionalChoice(articleId, targetRB, isOurArticle);
         return;
     }
-    
+
+    // ⚠️ PROVJERA: Postoji li već prvi izbor u ovoj RB grupi?
+    const existingFirstChoice = results.find(r => r.rb == targetRB && r.isFirstChoice === true);
+    if (existingFirstChoice) {
+        const message =
+            `⚠️ UPOZORENJE: Već postoji prvi izbor za RB ${targetRB}!\n\n` +
+            `Trenutni prvi izbor:\n` +
+            `📦 ${existingFirstChoice.code} - ${existingFirstChoice.name}\n` +
+            `💰 Cijena: €${(existingFirstChoice.pricePerPiece || 0).toFixed(2)}\n\n` +
+            `Što želite učiniti?\n\n` +
+            `[OK] = Zamijeni (ukloni stari, dodaj novi kao PRVI izbor)\n` +
+            `[Odustani] = Ne dodaj ništa (korisnik može ručno dodati kao drugi izbor)`;
+
+        const shouldReplace = confirm(message);
+
+        if (shouldReplace) {
+            // Korisnik želi zamijeniti - ukloni stari prvi izbor
+            console.log(`🔄 Replacing first choice in RB ${targetRB}: ${existingFirstChoice.code} → articleId ${articleId}`);
+
+            // Makni stari prvi izbor
+            const indexToRemove = results.findIndex(r => r.id === existingFirstChoice.id && r.rb === existingFirstChoice.rb);
+            if (indexToRemove !== -1) {
+                results.splice(indexToRemove, 1);
+                selectedResults.delete(`${existingFirstChoice.id}-${existingFirstChoice.rb}`);
+                console.log(`✅ Old first choice removed: ${existingFirstChoice.code}`);
+            }
+
+            // Nastavi s dodavanjem novog kao prvi izbor (nastavlja se normalno)
+        } else {
+            // Korisnik je odustao - ne dodaj ništa
+            console.log(`❌ User cancelled adding first choice for RB ${targetRB}`);
+            return;
+        }
+    }
+
     const priceInput = document.getElementById(`price-${articleId}-${targetRB}`);
     const weightInput = document.getElementById(`weight-${articleId}-${targetRB}`);
 
@@ -794,48 +800,66 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
     // Try to find the article in main articles array first, then in autocomplete results
     let article = null;
 
-    // ENHANCED SEARCH LOGIC: Try multiple sources
-    // Fix: Convert articleId to number for comparison since article.id is numeric
-    const articleIdNum = parseInt(articleId);
-    const articleIdStr = String(articleId);
+    // ✅ SPECIAL HANDLING: Weight Database articles with ID format "weight_CODE_RB"
+    if (String(articleId).startsWith('weight_')) {
+        const parts = String(articleId).split('_'); // ["weight", "CODE", "RB"]
+        if (parts.length >= 3) {
+            const code = parts[1]; // Extract CODE
+            console.log(`🔍 Weight Database article detected (first choice): ID="${articleId}", CODE="${code}"`);
 
-    if (typeof articles !== 'undefined' && articles.length > 0) {
-        // Try both numeric and string comparison
-        article = articles.find(a => a.id === articleIdNum || a.id === articleIdStr || String(a.id) === articleIdStr);
+            // Use existing function to recreate full article from weight database
+            if (typeof createArticleFromWeightDatabase === 'function') {
+                article = createArticleFromWeightDatabase(code, targetRB);
+                console.log(`✅ Weight Database article recreated (first choice):`, article);
+            }
+        }
     }
 
-    if (!article && autocompleteResults.length > 0) {
-        // Try multiple comparison strategies
-        let found1 = autocompleteResults.find(a => a.id === articleIdNum);
-        let found2 = autocompleteResults.find(a => a.id === articleIdStr);
-        let found3 = autocompleteResults.find(a => String(a.id) === articleIdStr);
-        let found4 = autocompleteResults.find(a => a.code === articleIdStr || a.code === articleIdNum);
+    // Standard lookup for non-weight-database articles
+    if (!article) {
+        // ENHANCED SEARCH LOGIC: Try multiple sources
+        // Fix: Convert articleId to number for comparison since article.id is numeric
+        const articleIdNum = parseInt(articleId);
+        const articleIdStr = String(articleId);
 
-        // Use the first successful strategy
-        article = found1 || found2 || found3 || found4;
-    }
+        if (typeof articles !== 'undefined' && articles.length > 0) {
+            // Try both numeric and string comparison
+            article = articles.find(a => a.id === articleIdNum || a.id === articleIdStr || String(a.id) === articleIdStr);
+        }
 
-    // FALLBACK: Try to reconstruct article from weight database if available
-    if (!article && typeof window.weightDatabase !== 'undefined') {
-        // Extract code from articleId (assuming format like "code-timestamp" or just "code")
-        const possibleCodes = [
-            articleId,
-            articleId.split('-')[0], // If format is "code-timestamp"
-            articleId.replace(/[^a-zA-Z0-9]/g, '') // Remove special characters
-        ];
+        if (!article && autocompleteResults.length > 0) {
+            // Try multiple comparison strategies
+            let found1 = autocompleteResults.find(a => a.id === articleIdNum);
+            let found2 = autocompleteResults.find(a => a.id === articleIdStr);
+            let found3 = autocompleteResults.find(a => String(a.id) === articleIdStr);
+            let found4 = autocompleteResults.find(a => a.code === articleIdStr || a.code === articleIdNum);
 
-        for (const code of possibleCodes) {
-            if (window.weightDatabase.has(code)) {
-                // Create a minimal article object from weight database
-                article = {
-                    id: articleId,
-                    code: code,
-                    name: `Artikl ${code}`, // Basic name
-                    unit: 'kom', // Default unit
-                    source: 'LAGER', // Assume LAGER since it's in weight DB
-                    price: 0 // Will be filled from input
-                };
-                break;
+            // Use the first successful strategy
+            article = found1 || found2 || found3 || found4;
+        }
+
+        // FALLBACK: Try to reconstruct article from weight database if available
+        if (!article && typeof window.weightDatabase !== 'undefined') {
+            // Extract code from articleId (assuming format like "code-timestamp" or just "code")
+            const possibleCodes = [
+                articleId,
+                articleId.split('-')[0], // If format is "code-timestamp"
+                articleId.replace(/[^a-zA-Z0-9]/g, '') // Remove special characters
+            ];
+
+            for (const code of possibleCodes) {
+                if (window.weightDatabase.has(code)) {
+                    // Create a minimal article object from weight database
+                    article = {
+                        id: articleId,
+                        code: code,
+                        name: `Artikl ${code}`, // Basic name
+                        unit: 'kom', // Default unit
+                        source: 'LAGER', // Assume LAGER since it's in weight DB
+                        price: 0 // Will be filled from input
+                    };
+                    break;
+                }
             }
         }
     }
@@ -1060,10 +1084,22 @@ async function addAsFirstChoice(articleId, targetRB, isOurArticle) {
         alert(successMessage);
     }
 
-    // Clear inputs and focus for next entry
+    // Clear inputs
     priceInput.value = '';
     if (weightInput) weightInput.value = '';
-    setTimeout(() => priceInput.focus(), 100);
+
+    // Blur (unfocus) price input da se ne ostaje u njemu
+    priceInput.blur();
+    if (weightInput) weightInput.blur();
+
+    // Fokusiraj glavnu tražilicu za nastavak rada
+    const globalSearchInput = document.getElementById('globalSearchInput');
+    if (globalSearchInput) {
+        setTimeout(() => {
+            globalSearchInput.focus({preventScroll: true});
+            console.log('✅ Focus returned to search input after adding article');
+        }, 100);
+    }
 
     // // console.log(`🥇 FIRST CHOICE added: ${article.name} → Troškovnik RB ${targetRB}`);
 }
@@ -1077,37 +1113,112 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
 
     // ENHANCED SEARCH LOGIC: Try multiple sources
     // Fix: Convert articleId to number for comparison since article.id is numeric
-    const articleIdNum = parseInt(articleId);
 
-    if (typeof articles !== 'undefined' && articles.length > 0) {
-        article = articles.find(a => a.id === articleIdNum);
+    // ✅ SPECIAL HANDLING: Weight Database articles with ID format "weight_CODE_RB"
+    if (String(articleId).startsWith('weight_')) {
+        const parts = String(articleId).split('_'); // ["weight", "CODE", "RB"]
+        if (parts.length >= 3) {
+            const code = parts[1]; // Extract CODE
+            console.log(`🔍 Weight Database article detected: ID="${articleId}", CODE="${code}"`);
+
+            // Use existing function to recreate full article from weight database
+            if (typeof createArticleFromWeightDatabase === 'function') {
+                article = createArticleFromWeightDatabase(code, targetRB);
+                console.log(`✅ Weight Database article recreated:`, article);
+            }
+        }
     }
 
-    if (!article && autocompleteResults.length > 0) {
-        article = autocompleteResults.find(a => a.id === articleIdNum);
+    // ✅ SPECIAL HANDLING: Historical articles with ID format "history_INDEX"
+    if (!article && String(articleId).startsWith('history_')) {
+        const parts = String(articleId).split('_'); // ["history", "INDEX"]
+        if (parts.length === 2) {
+            const index = parseInt(parts[1]); // Extract INDEX
+            console.log(`🔍 Historical article detected: ID="${articleId}", INDEX="${index}"`);
+
+            // Try to find in proslogodisnjeCijene array
+            if (typeof window.proslogodisnjeCijene !== 'undefined' && Array.isArray(window.proslogodisnjeCijene)) {
+                const historicalItem = window.proslogodisnjeCijene[index];
+
+                if (historicalItem) {
+                    console.log(`✅ Historical article found:`, historicalItem);
+
+                    // Check if article exists in weight database
+                    const existsInWeightDb = historicalItem.sifra &&
+                                            typeof window.weightDatabase !== 'undefined' &&
+                                            window.weightDatabase.has(historicalItem.sifra);
+
+                    let pdvStopa = 0;
+                    if (existsInWeightDb && historicalItem.sifra) {
+                        if (typeof window.getArticleWeightAndPDV === 'function') {
+                            const pdvData = window.getArticleWeightAndPDV(historicalItem.sifra, historicalItem.naziv, historicalItem.jm, 'HISTORICAL');
+                            if (pdvData.pdvStopa > 0) {
+                                pdvStopa = pdvData.pdvStopa;
+                            }
+                        }
+                        if (pdvStopa === 0 && typeof window.pdvDatabase !== 'undefined' && window.pdvDatabase.has(historicalItem.sifra)) {
+                            pdvStopa = window.pdvDatabase.get(historicalItem.sifra);
+                        }
+                    }
+
+                    // Recreate article object from historical data
+                    article = {
+                        id: articleId,
+                        name: historicalItem.naziv || 'Nepoznat naziv',
+                        code: historicalItem.sifra || '',
+                        unit: historicalItem.jm || 'kom',
+                        price: parseFloat(historicalItem.cijena) || 0,
+                        supplier: existsInWeightDb ? 'Prošlogodišnje (iz baze)' : 'Prošlogodišnje cijene',
+                        source: 'HISTORICAL',
+                        calculatedWeight: existsInWeightDb ? window.weightDatabase.get(historicalItem.sifra) : 0,
+                        weight: existsInWeightDb ? window.weightDatabase.get(historicalItem.sifra) : 0,
+                        isHistorical: true,
+                        isInWeightDatabase: existsInWeightDb,
+                        pdvStopa: pdvStopa > 0 ? pdvStopa : 0,
+                        customPdvStopa: !existsInWeightDb ? 25 : (pdvStopa > 0 ? pdvStopa : undefined)
+                    };
+                    console.log(`✅ Historical article recreated for additional choice:`, article);
+                } else {
+                    console.error(`❌ Historical article not found at index ${index}`);
+                }
+            }
+        }
     }
 
-    // FALLBACK: Try to reconstruct article from weight database if available
-    if (!article && typeof window.weightDatabase !== 'undefined') {
-        // Extract code from articleId (assuming format like "code-timestamp" or just "code")
-        const possibleCodes = [
-            articleId,
-            articleId.split('-')[0], // If format is "code-timestamp"
-            articleId.replace(/[^a-zA-Z0-9]/g, '') // Remove special characters
-        ];
+    // Standard lookup for non-weight-database articles
+    if (!article) {
+        const articleIdNum = parseInt(articleId);
 
-        for (const code of possibleCodes) {
-            if (window.weightDatabase.has(code)) {
-                // Create a minimal article object from weight database
-                article = {
-                    id: articleId,
-                    code: code,
-                    name: `Artikl ${code}`, // Basic name
-                    unit: 'kom', // Default unit
-                    source: 'LAGER', // Assume LAGER since it's in weight DB
-                    price: 0 // Will be filled from input
-                };
-                break;
+        if (typeof articles !== 'undefined' && articles.length > 0) {
+            article = articles.find(a => a.id === articleIdNum);
+        }
+
+        if (!article && autocompleteResults.length > 0) {
+            article = autocompleteResults.find(a => a.id === articleIdNum);
+        }
+
+        // FALLBACK: Try to reconstruct article from weight database if available
+        if (!article && typeof window.weightDatabase !== 'undefined') {
+            // Extract code from articleId (assuming format like "code-timestamp" or just "code")
+            const possibleCodes = [
+                articleId,
+                articleId.split('-')[0], // If format is "code-timestamp"
+                articleId.replace(/[^a-zA-Z0-9]/g, '') // Remove special characters
+            ];
+
+            for (const code of possibleCodes) {
+                if (window.weightDatabase.has(code)) {
+                    // Create a minimal article object from weight database
+                    article = {
+                        id: articleId,
+                        code: code,
+                        name: `Artikl ${code}`, // Basic name
+                        unit: 'kom', // Default unit
+                        source: 'LAGER', // Assume LAGER since it's in weight DB
+                        price: 0 // Will be filled from input
+                    };
+                    break;
+                }
             }
         }
     }
@@ -1207,14 +1318,14 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
     }
 
     // ENHANCED: Detect Weight database articles and set appropriate flags
-    const isWeightDatabaseArticle = article.isFromWeightDatabase === true || 
+    const isWeightDatabaseArticle = article.isFromWeightDatabase === true ||
                                    article.source === 'WEIGHT_DATABASE' ||
                                    (article.id && String(article.id).startsWith('weight_'));
-    
-    // For Weight database articles, use price from troškovnik izlazna_cijena
-    const shouldUseOutputPrice = isWeightDatabaseArticle && troskovnikItem && troskovnikItem.izlazna_cijena > 0;
-    const finalUserPrice = shouldUseOutputPrice ? troskovnikItem.izlazna_cijena : 0;
-    const hasValidUserPrice = shouldUseOutputPrice || false;
+
+    // FIXED: Drugi izbor UVIJEK ima cijenu = 0 (samo nabavna opcija, ne utječe na izlaznu cijenu)
+    // Tablica rabata će koristiti preračunatu cijenu iz prvog izbora iz troškovnika
+    const finalUserPrice = 0;
+    const hasValidUserPrice = false;
 
     // CRITICAL PDV FIX: Get correct PDV stopa for "our articles" (same as in addAsFirstChoice)
     let finalPdvStopa = article.pdvStopa || 0;
@@ -1241,10 +1352,10 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
         ...article,
         rb: targetRB,
         calculatedWeight: finalWeight,
-        pricePerKg: shouldUseOutputPrice && finalWeight > 0 ? (finalUserPrice / finalWeight) : 0,
-        hasUserPrice: hasValidUserPrice, // FIXED: true for Weight database with output price
-        userPriceType: shouldUseOutputPrice ? 'pricePerPiece' : null,
-        pricePerPiece: finalUserPrice, // FIXED: Use actual output price for Weight database
+        pricePerKg: 0, // FIXED: Drugi izbor nema cijenu (koristi se iz prvog izbora)
+        hasUserPrice: hasValidUserPrice, // false - nema user cijenu
+        userPriceType: null, // null - bez cijene
+        pricePerPiece: finalUserPrice, // 0 - drugi izbor nema cijenu
         isFirstChoice: false,
         troskovnikPosition: canUpdateTroskovnik ? 'Nabavna 2' : 'Samo u rezultatima',
         // Keep original VPC data separate for troškovnik calculations
@@ -1309,6 +1420,15 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
         alert(successMessage);
     }
 
+    // Fokusiraj glavnu tražilicu nakon dodavanja
+    const globalSearchInput = document.getElementById('globalSearchInput');
+    if (globalSearchInput) {
+        setTimeout(() => {
+            globalSearchInput.focus({preventScroll: true});
+            console.log('✅ Focus returned to search input after adding additional choice');
+        }, 100);
+    }
+
     // // console.log(`🥈 ADDITIONAL CHOICE added: ${article.name} → ${position} RB ${targetRB}`);
 }
 
@@ -1349,7 +1469,7 @@ function addWithoutPriceFromAutocomplete(articleId, targetRB) {
         article = autocompleteResults.find(a => a.id === articleId || String(a.id) === String(articleId));
     }
     
-    const isOurArticle = article ? isTrulyOurArticle(article.source, article.code) : false;
+    const isOurArticle = article ? window.isTrulyOurArticle(article.source, article.code) : false;
     addAsAdditionalChoice(articleId, targetRB, isOurArticle);
 }
 
@@ -1394,10 +1514,12 @@ function handleGlobalSearchKeypress(event) {
             // Add all our articles
             const currentQuery = event.target.value.trim();
             const parsedQuery = parseSearchQuery(currentQuery);
-            const targetRB = (parsedQuery.segments.length > 0 && parsedQuery.segments[0].rb) ? 
-                             parsedQuery.segments[0].rb : "PENDING";
+            // NOVO: Koristi currentRB ako nema RB u query-u
+            const targetRB = (parsedQuery.segments.length > 0 && parsedQuery.segments[0].rb) ?
+                             parsedQuery.segments[0].rb :
+                             (typeof window.currentRB !== 'undefined' && window.currentRB > 0 ? window.currentRB : "PENDING");
             
-            const ourArticles = autocompleteResults.filter(item => isTrulyOurArticle(item.source, item.code));
+            const ourArticles = autocompleteResults.filter(item => window.isTrulyOurArticle(item.source, item.code));
             if (ourArticles.length > 0) {
                 addAllOurArticles(ourArticles, targetRB);
             }
@@ -1492,8 +1614,19 @@ function performGlobalSearch() {
     try {
         const parsedQuery = parseSearchQuery(query);
         let targetRB = "PENDING";
+
+        // ENHANCED: Provjeri postoji li RB u query-u (backwards compatible)
         if (parsedQuery.segments.length > 0 && parsedQuery.segments[0].rb) {
             targetRB = parsedQuery.segments[0].rb;
+            // Update currentRB display ako korisnik upiše "5. krastavac"
+            if (typeof window.currentRB !== 'undefined') {
+                window.currentRB = targetRB;
+                const rbInput = document.getElementById('currentRB');
+                if (rbInput) rbInput.value = targetRB;
+            }
+        } else if (typeof window.currentRB !== 'undefined' && window.currentRB > 0) {
+            // NOVO: Koristi trenutni RB iz selectora ako nema RB-a u query-u
+            targetRB = window.currentRB;
         }
         
         // Clear existing results for this RB
@@ -1544,7 +1677,7 @@ function performGlobalSearch() {
             
             // CRITICAL FIX: Assign PDV data for global search results
             let finalPdvStopa = 0;
-            const isOurArticle = isTrulyOurArticle(newItem.source, newItem.code);
+            const isOurArticle = window.isTrulyOurArticle(newItem.source, newItem.code);
             
             if (isOurArticle && newItem.code) {
                 // Try to get PDV data using weight database function
@@ -1690,8 +1823,10 @@ function searchProslogodisnjeCijene(query, parsedQuery) {
         
         if (matchesTokens) {
             // ISPRAVKA: Dodaj RB iz parsiranog query-ja
-            const targetRB = parsedQuery.segments.length > 0 && parsedQuery.segments[0].rb ? 
-                parsedQuery.segments[0].rb : 1;
+            // NOVO: Koristi currentRB ako nema RB u query-u
+            const targetRB = parsedQuery.segments.length > 0 && parsedQuery.segments[0].rb ?
+                parsedQuery.segments[0].rb :
+                (typeof window.currentRB !== 'undefined' && window.currentRB > 0 ? window.currentRB : 1);
             
             // ENHANCED: Check if this historical article exists in weight database
             const existsInWeightDb = typeof window.weightDatabase !== 'undefined' && 
@@ -1745,140 +1880,136 @@ function searchProslogodisnjeCijene(query, parsedQuery) {
 
 /**
  * Create article from weight database for direct code search
- * RESTORED: Original HTML table reading logic + PDV stopa fix
+ * RESTORED: Original logic from working version - reads ONLY from HTML table
  * @param {string} code - šifra artikla
  * @param {number} targetRB - RB za koji se dodaje
  * @returns {Object|null} Formatiran artikl ili null ako ne postoji
  */
 function createArticleFromWeightDatabase(code, targetRB) {
     console.log(`🔍 DEBUG: Searching for code "${code}" (type: ${typeof code}) in HTML table`);
-    
-    // Read from HTML table in "Težine" tab (RESTORED original logic)
-    const weightsTableBody = document.getElementById('weightsTableBody');
-    if (!weightsTableBody) {
-        console.log(`❌ Weights table not found in DOM`);
-        return null;
-    }
-    
-    const tableRows = weightsTableBody.querySelectorAll('tr');
-    console.log(`📊 Found ${tableRows.length} rows in weights table`);
-    
-    if (tableRows.length === 0) {
-        console.log(`❌ No data in weights table`);
-        return null;
-    }
-    
-    // Log first few rows structure for debugging
-    console.log(`📝 First 3 rows structure:`);
-    for (let i = 0; i < Math.min(3, tableRows.length); i++) {
-        const cells = tableRows[i].cells;
-        const rowData = [];
-        for (let j = 0; j < cells.length; j++) {
-            rowData.push(cells[j].textContent.trim());
-        }
-        console.log(`Row ${i}:`, rowData);
-    }
-    
-    // Search for the code in column 1 (index 0) - RESTORED original logic
+
     let weightData = null;
-    let matchedRow = null;
-    
-    for (const row of tableRows) {
-        const cells = row.cells;
-        if (cells && cells.length > 0) {
-            const cellCode = cells[0].textContent.trim(); // Column 1: šifra
-            
-            // Try different matching approaches
-            if (cellCode === code || 
-                cellCode === String(code) || 
-                String(cellCode) === String(code) ||
-                parseInt(cellCode) === parseInt(code)) {
-                
-                console.log(`✅ MATCH FOUND for "${code}" in row:`, Array.from(cells).map(c => c.textContent.trim()));
-                matchedRow = row;
-                
-                // Extract weight from input element first, then fallback to textContent
-                const weightInput = cells[7] ? cells[7].querySelector('input[type="number"]') : null;
-                const weightFromInput = weightInput ? parseFloat(weightInput.value) : null;
-                const weightFromText = cells[7] ? parseFloat(cells[7].textContent.trim()) : null;
-                const finalWeight = weightFromInput || weightFromText || 0;
-                
-                console.log(`⚖️ Weight extraction: input=${weightFromInput}, text=${weightFromText}, final=${finalWeight}`);
-                
-                // Extract data according to column structure:
-                // 1-šifra, 2-podgrupa, 3-naziv, 4-mjerna jedinica, 5-tarifni broj, 6-stopa PDV, 7-dobavljač, 8-težina
-                weightData = {
-                    sifra: cells[0] ? cells[0].textContent.trim() : '',      // Column 1
-                    podgrupa: cells[1] ? cells[1].textContent.trim() : '',   // Column 2
-                    naziv: cells[2] ? cells[2].textContent.trim() : '',      // Column 3
-                    jm: cells[3] ? cells[3].textContent.trim() : 'kom',      // Column 4
-                    tarifniBroj: cells[4] ? cells[4].textContent.trim() : '', // Column 5
-                    pdvStopa: cells[5] ? cells[5].textContent.trim() : '0',  // Column 6
-                    dobavljac: cells[6] ? cells[6].textContent.trim() : '',  // Column 7
-                    tezinaKg: finalWeight // Column 8 - from input or text
-                };
-                break;
+    let dataSource = null;
+
+    // PRIORITY 1: Read from HTML table in "Težine" tab (as in working version)
+    const weightsTableBody = document.getElementById('weightsTableBody');
+    if (weightsTableBody) {
+        const tableRows = weightsTableBody.querySelectorAll('tr');
+        console.log(`📊 Searching in HTML table: ${tableRows.length} rows`);
+
+        // Search for the code in column 0 (šifra)
+        for (const row of tableRows) {
+            const cells = row.cells;
+            if (cells && cells.length > 0) {
+                const cellCode = cells[0].textContent.trim();
+
+                // Try different matching approaches
+                if (cellCode === code ||
+                    cellCode === String(code) ||
+                    String(cellCode) === String(code) ||
+                    parseInt(cellCode) === parseInt(code)) {
+
+                    console.log(`✅ MATCH FOUND in HTML table for "${code}"`);
+
+                    // Extract weight from input element first, then fallback to textContent
+                    const weightInput = cells[7] ? cells[7].querySelector('input[type="number"]') : null;
+                    const weightFromInput = weightInput ? parseFloat(weightInput.value) : null;
+                    const weightFromText = cells[7] ? parseFloat(cells[7].textContent.trim()) : null;
+                    const finalWeight = weightFromInput || weightFromText || 0;
+
+                    // Extract data according to column structure:
+                    // 0=šifra, 1=podgrupa, 2=naziv, 3=JM, 4=TB, 5=PDV%, 6=dobavljač, 7=težina
+                    weightData = {
+                        sifra: cells[0] ? cells[0].textContent.trim() : '',
+                        podgrupa: cells[1] ? cells[1].textContent.trim() : '',
+                        naziv: cells[2] ? cells[2].textContent.trim() : '',
+                        jedinica: cells[3] ? cells[3].textContent.trim() : 'kom',
+                        tarifniBroj: cells[4] ? cells[4].textContent.trim() : '',
+                        pdvStopa: parseFloat(cells[5] ? cells[5].textContent.trim() : '0') || 0,
+                        dobavljac: cells[6] ? cells[6].textContent.trim() : '',
+                        tezinaKg: finalWeight
+                    };
+                    dataSource = 'HTML_TABLE';
+                    break;
+                }
             }
         }
     }
-    
+
+    // PRIORITY 2: Fallback to weightDatabase Map (minimal data - only weight, no name)
+    if (!weightData && window.weightDatabase && window.weightDatabase.has(code)) {
+        console.log(`📊 FALLBACK: Found in weightDatabase Map (no name available)`);
+        const dbWeight = window.weightDatabase.get(code);
+        weightData = {
+            sifra: code,
+            podgrupa: '',
+            naziv: '', // No name in Map - user needs to load Google Sheets
+            jedinica: 'kom',
+            tarifniBroj: '',
+            pdvStopa: 0,
+            dobavljac: '',
+            tezinaKg: dbWeight
+        };
+        dataSource = 'WEIGHT_DATABASE_MAP';
+    }
+
     if (!weightData) {
-        console.log(`❌ Code ${code} not found in weights table`);
-        // Show available codes from first 10 rows
-        const availableCodes = [];
-        for (let i = 0; i < Math.min(10, tableRows.length); i++) {
-            const cells = tableRows[i].cells;
-            if (cells && cells[0]) {
-                availableCodes.push(`"${cells[0].textContent.trim()}"`);
+        console.log(`❌ Code ${code} NOT FOUND in any source`);
+        // Show available codes from HTML table
+        if (weightsTableBody) {
+            const tableRows = weightsTableBody.querySelectorAll('tr');
+            const availableCodes = [];
+            for (let i = 0; i < Math.min(10, tableRows.length); i++) {
+                const cells = tableRows[i].cells;
+                if (cells && cells[0]) {
+                    availableCodes.push(`"${cells[0].textContent.trim()}"`);
+                }
             }
+            console.log(`Available codes in HTML table:`, availableCodes.join(', '));
         }
-        console.log(`Available codes sample:`, availableCodes);
         return null;
     }
-    
-    console.log(`✅ Found code ${code} in weight database:`, weightData);
-    
-    // Use data directly from parsed HTML table (already mapped to correct fields)
+
+    console.log(`✅ Found code ${code} from ${dataSource}:`, weightData);
+
+    // Use data from found source
     const articleName = weightData.naziv || `Nepoznat naziv ${code}`;
     const tarifniBroj = weightData.tarifniBroj || '';
-    
-    // FIXED: Use PDV stopa directly from HTML table instead of calculating from tarifni broj
-    const pdvStopa = parseFloat(weightData.pdvStopa) || 0;
-    
+    let pdvStopa = weightData.pdvStopa || 0;
+
     console.log(`📝 Article name: "${articleName}"`);
     console.log(`📊 Tarifni broj: "${tarifniBroj}"`);
-    console.log(`💰 FIXED PDV stopa from HTML table: ${pdvStopa}% (raw: "${weightData.pdvStopa}")`);
-    
+    console.log(`💰 PDV stopa: ${pdvStopa}%`);
+
     // FALLBACK: If PDV stopa is 0, try calculating from tarifni broj
-    let finalPdvStopa = pdvStopa;
     if (pdvStopa === 0 && tarifniBroj && window.mapTarifniBrojToPDV) {
         const calculatedPdv = window.mapTarifniBrojToPDV(tarifniBroj);
         if (calculatedPdv > 0) {
-            finalPdvStopa = calculatedPdv;
-            console.log(`🔄 Fallback PDV calculation from tarifni broj: ${finalPdvStopa}%`);
+            pdvStopa = calculatedPdv;
+            console.log(`🔄 Fallback PDV calculation from tarifni broj: ${pdvStopa}%`);
         }
     }
-    
-    // Formatiraj kao standardni article objekt (kompatibilan s postojećim sustavom)
+
+    // Format as standard article object (compatible with existing system)
     const article = {
-        id: `weight_${code}_${targetRB}`, // Unique ID
-        name: `${articleName} (${code})`, // CRITICAL FIX: Add code in brackets for export recognition
+        id: `weight_${code}_${targetRB}`,
+        name: `${articleName} (${code})`,
         code: code,
-        unit: weightData.jm || 'kom',
-        price: 0, // Bez cijene - korisnik će ručno upisati u troškovniku
-        pricePerPiece: 0, // DODANO: Za tablica rabata filter
-        hasUserPrice: true, // DODANO: Označava da može u tablica rabata
+        unit: weightData.jedinica || 'kom',
+        price: 0,
+        pricePerPiece: 0,
+        hasUserPrice: true,
         supplier: weightData.dobavljac || 'Iz baze težina',
         source: 'WEIGHT_DATABASE',
         calculatedWeight: weightData.tezinaKg || 0,
         weight: weightData.tezinaKg || 0,
-        pricePerKg: 0, // Nema cijene
+        pricePerKg: 0,
         rb: targetRB,
-        isFromWeightDatabase: true, // Specijalna oznaka
+        isFromWeightDatabase: true,
         tarifniBroj: tarifniBroj,
-        pdvStopa: finalPdvStopa
+        pdvStopa: pdvStopa
     };
-    
+
     return article;
 }
 

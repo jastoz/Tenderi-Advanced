@@ -56,25 +56,17 @@ function updateTablicaRabataDisplay() {
     if (clearBtn) clearBtn.style.display = 'block';
     
     // Calculate summary statistics
-    const totalValue = tablicaRabata.reduce((sum, item) => sum + (item.cijena * item.kolicina_troskovnik), 0);
     const uniqueCodes = new Set(tablicaRabata.map(item => item.sifra_artikla)).size;
     const groups = new Set(tablicaRabata.map(item => item.redni_broj_grupe)).size;
     const enhancedItems = tablicaRabata.filter(item => item.calculation_source === 'enhanced_results').length;
-    
+
     let html = `
         <div style="margin-bottom: 20px; padding: 16px; background: #f3f4f6; border-radius: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <strong>PROŠIRENA Tablica rabata:</strong> ${tablicaRabata.length} stavki • 
-                    <strong>Šifre:</strong> ${uniqueCodes} • 
-                    <strong>Grupe:</strong> ${groups} • 
-                    <strong>Svi tipovi:</strong> ${enhancedItems}
-                </div>
-                <div style="text-align: right;">
-                    <div style="font-size: 14px; color: #6b7280;">Ukupna vrijednost</div>
-                    <div style="font-weight: bold; color: #059669; font-size: 18px;">€${totalValue.toFixed(2)}</div>
-                    <div style="font-size: 10px; color: #7c3aed; margin-top: 2px;">⚡ Direktno iz autocomplete</div>
-                </div>
+            <div>
+                <strong>PROŠIRENA Tablica rabata:</strong> ${tablicaRabata.length} stavki •
+                <strong>Šifre:</strong> ${uniqueCodes} •
+                <strong>Grupe:</strong> ${groups} •
+                <strong>Svi tipovi:</strong> ${enhancedItems}
             </div>
             <div style="font-size: 12px; color: #6b7280; margin-top: 8px;">
                 📊 Generirano iz PROŠIRENIH rezultata - uključuje SVE tipove artikala
@@ -96,7 +88,6 @@ function updateTablicaRabataDisplay() {
                         <th>Naziv stavke u troškovniku</th>
                         <th style="width: 60px;">J.M. trošk.</th>
                         <th style="width: 80px;">Količina</th>
-                        <th style="width: 100px;">Ukupno (€)</th>
                         <th style="width: 120px;">Dobavljač</th>
                         <th style="width: 100px;">Izvor</th>
                         <th style="width: 80px;">Akcije</th>
@@ -106,7 +97,6 @@ function updateTablicaRabataDisplay() {
     `;
     
     tablicaRabata.forEach((item, index) => {
-        const ukupno = item.cijena * item.kolicina_troskovnik;
         const rowStyle = index % 2 === 0 ? 'background: #f9fafb;' : '';
         
         // ENHANCED: Article type-based visual coding
@@ -204,7 +194,6 @@ function updateTablicaRabataDisplay() {
                         title="Editabilna količina"
                     >
                 </td>
-                <td><strong style="color: #059669;">€${ukupno.toFixed(2)}</strong></td>
                 <td>${item.dobavljac || 'N/A'}</td>
                 <td>
                     <span class="badge ${getBadgeClass(item.izvor || '')}" style="${isEnhanced ? 'box-shadow: 0 0 0 1px #7c3aed;' : ''}">
@@ -300,10 +289,10 @@ function exportTablicaRabataCSV() {
     
     const csvHeaders = [
         'Šifra artikla', 'Naziv artikla', 'J.M.', 'Cijena za tab. (€)',
-        'RB Grupe', 'Naziv stavke u troškovniku', 'J.M. troškovnik', 'Količina', 
-        'Ukupno (€)', 'Dobavljač', 'Izvor', 'Enhanced', 'Formula cijene'
+        'RB Grupe', 'Naziv stavke u troškovniku', 'J.M. troškovnik', 'Količina',
+        'Dobavljač', 'Izvor', 'Enhanced', 'Formula cijene'
     ];
-    
+
     const csvData = tablicaRabata.map(item => [
         item.sifra_artikla,
         item.naziv_artikla,
@@ -313,7 +302,6 @@ function exportTablicaRabataCSV() {
         item.naziv_stavke_troskovnik,
         item.jedinica_mjere_troskovnik,
         item.kolicina_troskovnik,
-        (item.cijena * item.kolicina_troskovnik).toFixed(2),
         item.dobavljac || 'N/A',
         item.izvor || 'N/A',
         item.calculation_source === 'enhanced_results' ? 'Da' : 'Ne',
@@ -322,16 +310,14 @@ function exportTablicaRabataCSV() {
     
     const filename = `enhanced_tablica_rabata_${tablicaRabata.length}_stavki.csv`;
     exportToCSV(csvHeaders, csvData, filename);
-    
-    const totalValue = tablicaRabata.reduce((sum, item) => sum + (item.cijena * item.kolicina_troskovnik), 0);
+
     const enhancedCount = tablicaRabata.filter(item => item.calculation_source === 'enhanced_results').length;
-    
-    showMessage('success', 
+
+    showMessage('success',
         `✅ Enhanced tablica rabata exportana!\n` +
         `📁 ${filename}\n` +
         `📊 Stavki: ${tablicaRabata.length}\n` +
-        `⚡ Enhanced: ${enhancedCount}\n` +
-        `💰 Ukupna vrijednost: €${totalValue.toFixed(2)}`, 
+        `⚡ Enhanced: ${enhancedCount}`,
         'tablicaRabataStatus'
     );
 }
@@ -353,10 +339,10 @@ function exportTablicaRabataExcel() {
     // Prepare data for Excel
     const excelData = [
         ['Šifra artikla', 'Naziv artikla', 'J.M.', 'Cijena za tab. (€)',
-         'RB Grupe', 'Naziv stavke u troškovniku', 'J.M. troškovnik', 'Količina', 
-         'Ukupno (€)', 'Dobavljač', 'Izvor', 'Enhanced', 'Formula cijene', 'Težina (kg)', 'VPC/kg (€)']
+         'RB Grupe', 'Naziv stavke u troškovniku', 'J.M. troškovnik', 'Količina',
+         'Dobavljač', 'Izvor', 'Enhanced', 'Formula cijene', 'Težina (kg)', 'VPC/kg (€)']
     ];
-    
+
     tablicaRabata.forEach(item => {
         excelData.push([
             item.sifra_artikla,
@@ -367,7 +353,6 @@ function exportTablicaRabataExcel() {
             item.naziv_stavke_troskovnik,
             item.jedinica_mjere_troskovnik,
             item.kolicina_troskovnik,
-            item.cijena * item.kolicina_troskovnik,
             item.dobavljac || 'N/A',
             item.izvor || 'N/A',
             item.calculation_source === 'enhanced_results' ? 'Da' : 'Ne',
@@ -416,17 +401,15 @@ function exportTablicaRabataExcel() {
     
     // Save file
     XLSX.writeFile(wb, filename);
-    
-    const totalValue = tablicaRabata.reduce((sum, item) => sum + (item.cijena * item.kolicina_troskovnik), 0);
+
     const enhancedCount = tablicaRabata.filter(item => item.calculation_source === 'enhanced_results').length;
-    
-    showMessage('success', 
+
+    showMessage('success',
         `✅ Enhanced Excel tablica rabata exportana!\n` +
         `📁 Datoteka: ${filename}\n` +
         `📊 Stavki: ${tablicaRabata.length}\n` +
         `⚡ Enhanced stavki: ${enhancedCount}\n` +
-        `💰 Ukupna vrijednost: €${totalValue.toFixed(2)}\n` +
-        `🎯 S direktno unesenim cijenama iz autocomplete`, 
+        `🎯 S direktno unesenim cijenama iz autocomplete`,
         'tablicaRabataStatus'
     );
 }
@@ -445,212 +428,9 @@ function clearTablicaRabata() {
     }
 }
 
-/**
- * NEW: Enhanced function to determine if article is truly "ours"
- * @param {string} source - Article source
- * @param {string} code - Article code (optional)
- * @returns {boolean} True if truly our article
- */
-function isTrulyOurArticle(source, code) {
-    if (!source) return false;
+// NOTE: isTrulyOurArticle() is centrally defined in utils.js and exported as window.isTrulyOurArticle
 
-    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
-    const lowerSource = source.toLowerCase();
-    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
-
-    if (isLagerOrUrpd) {
-        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
-    }
-
-    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
-    const isDirectWeightDbArticle = code &&
-                                   typeof window.weightDatabase !== 'undefined' &&
-                                   window.weightDatabase.has(code) &&
-                                   lowerSource.includes('weight database');
-
-    return isDirectWeightDbArticle;
-}
-
-/**
- * Generates tablica rabata from results with user prices
- */
-function generateFromResults() {
-    console.log('🚨🚨🚨 STARA FUNKCIJA IZ TABLICARABATA.JS SE POZIVA!!!');
-    console.log('🚨🚨🚨 Ovo znači da se nova funkcija iz enhanced-functions.js NE KORISTI!');
-    console.log('🎯 Generating tablica rabata from enhanced results...');
-    
-    // DEBUG: Prikaži sve results
-    console.log('🔥🔥🔥 SVIH RESULTS UKUPNO:', results?.length || 0);
-    if (results && results.length > 0) {
-        console.log('🔥🔥🔥 SVI RESULTS:');
-        results.forEach((r, index) => {
-            console.log(`  [${index}] ${r.name} | isFromWeightDatabase: ${r.isFromWeightDatabase} | hasUserPrice: ${r.hasUserPrice} | pricePerPiece: ${r.pricePerPiece} | source: ${r.source}`);
-        });
-        
-        // Posebno prikaži Weight Database artikle
-        const weightDbResults = results.filter(r => r.isFromWeightDatabase === true);
-        console.log('🔥🔥🔥 WEIGHT DATABASE RESULTS:', weightDbResults.length);
-        weightDbResults.forEach((r, index) => {
-            console.log(`  [${index}] WEIGHT DB: ${r.name} | hasUserPrice: ${r.hasUserPrice} | pricePerPiece: ${r.pricePerPiece}`);
-        });
-    }
-    
-    // Check if we have results with user prices OR Weight Database articles
-    console.log('🔥🔥🔥 FILTERING FOR RESULTS WITH PRICES (INCLUDING WEIGHT DATABASE)...');
-    const resultsWithPrices = results.filter(r => {
-        // NOVA LOGIKA: Uključi Weight Database artikle čak i bez cijene
-        const isWeightDatabaseArticle = r.isFromWeightDatabase === true;
-        const hasRegularPrice = r.hasUserPrice && r.pricePerPiece > 0;
-        
-        // Provjeri troškovnik cijenu za Weight Database artikle
-        let hasTroskovnikPrice = false;
-        if (isWeightDatabaseArticle && r.rb) {
-            const troskovnikItem = getTroskovnikItemForRB(r.rb);
-            hasTroskovnikPrice = troskovnikItem && troskovnikItem.izlazna_cijena > 0;
-        }
-        
-        const shouldInclude = hasRegularPrice || (isWeightDatabaseArticle && (hasRegularPrice || hasTroskovnikPrice));
-        
-        if (!shouldInclude) {
-            console.log(`❌ FILTERED OUT: ${r.name} | hasUserPrice: ${r.hasUserPrice} | pricePerPiece: ${r.pricePerPiece} | isFromWeightDatabase: ${r.isFromWeightDatabase} | hasTroskovnikPrice: ${hasTroskovnikPrice}`);
-        } else {
-            console.log(`✅ INCLUDED: ${r.name} | hasUserPrice: ${r.hasUserPrice} | pricePerPiece: ${r.pricePerPiece} | isFromWeightDatabase: ${r.isFromWeightDatabase} | hasTroskovnikPrice: ${hasTroskovnikPrice} | reason: ${isWeightDatabaseArticle ? 'Weight Database' : 'Regular price'}`);
-        }
-        return shouldInclude;
-    });
-    
-    console.log('🔥🔥🔥 RESULTS WITH PRICES UKUPNO:', resultsWithPrices.length);
-    
-    if (resultsWithPrices.length === 0) {
-        showMessage('error', 
-            '❌ Nema rezultata s unesenim cijenama!\n\n' +
-            'Za generiranje tablice rabata potrebno je:\n' +
-            '1. Dodati rezultate pretrage\n' +
-            '2. Upisati cijene za LAGER/URPD artikle\n' +
-            '3. Pokušati ponovo\n\n' +
-            '💡 Tip: Koristite direktno upisivanje cijena u autocomplete!', 
-            'tablicaRabataStatus'
-        );
-        return;
-    }
-    
-    // console.log('📊 Found results with prices:', resultsWithPrices.length);
-    
-    // Filter only our articles (LAGER/URPD) AND Weight Database articles - ENHANCED LOGIC
-    console.log('🔥🔥🔥 FILTERING FOR VALID ARTICLES FOR TABLICA...');
-    const ourArticlesWithPrices = resultsWithPrices.filter(item => {
-        const isOurArticle = isTrulyOurArticle(item.source, item.code);
-        const isWeightDatabaseArticle = item.isFromWeightDatabase === true;
-        
-        const shouldInclude = isOurArticle || isWeightDatabaseArticle;
-        
-        if (shouldInclude) {
-            console.log(`✅ VALID FOR TABLICA: ${item.name} | source: ${item.source} | isFromWeightDatabase: ${item.isFromWeightDatabase} | reason: ${isWeightDatabaseArticle ? 'Weight Database article' : 'Our article (LAGER/URPD)'}`);
-        } else {
-            console.log(`❌ NOT VALID FOR TABLICA: ${item.name} | source: ${item.source} | isFromWeightDatabase: ${item.isFromWeightDatabase}`);
-        }
-        
-        return shouldInclude;
-    });
-    
-    if (ourArticlesWithPrices.length === 0) {
-        showMessage('error', 
-            '❌ Nema LAGER/URPD/WEIGHT DATABASE artikala s cijenama!\n\n' +
-            'Tablica rabata se može generirati iz:\n' +
-            '• 🏠 LAGER/URPD artikala s unesenom cijenom\n' +
-            '• ⚖️ WEIGHT DATABASE artikala s kodom u zagradi (1995)\n' +
-            '• 📝 Artikala s šifrom i izvorom\n\n' +
-            '💡 Tip: Upisujte cijene za zeleno označene artikle u autocomplete ili dodajte artikle iz Tablice težina!', 
-            'tablicaRabataStatus'
-        );
-        return;
-    }
-    
-    // Group by code and take cheapest
-    const groupedByCode = {};
-    
-    ourArticlesWithPrices.forEach(item => {
-        const code = item.code ? item.code.trim() : '';
-        if (!code) return;
-        
-        if (!groupedByCode[code]) {
-            groupedByCode[code] = [];
-        }
-        groupedByCode[code].push(item);
-    });
-    
-    // Select cheapest per code
-    const uniqueItems = [];
-    Object.entries(groupedByCode).forEach(([code, items]) => {
-        items.sort((a, b) => a.pricePerPiece - b.pricePerPiece);
-        const cheapest = items[0];
-        // console.log(`💰 Code ${code}: Selected cheapest - €${cheapest.pricePerPiece.toFixed(2)}`);
-        uniqueItems.push(cheapest);
-    });
-    
-    // console.log('🎯 Unique items selected:', uniqueItems.length);
-    
-    // Clear existing tablica rabata
-    tablicaRabata.length = 0;
-    
-    // Generate entries
-    uniqueItems.forEach((item, index) => {
-        // Get troškovnik item for this RB
-        const troskovnikItem = getTroskovnikItemForRB(item.rb);
-        
-        const rabataEntry = {
-            id: index + 1,
-            sifra_artikla: item.code.trim(),
-            naziv_artikla: item.name,
-            jedinica_mjere: item.unit,
-            cijena: item.pricePerPiece, // Use user-entered price
-            redni_broj_grupe: item.rb,
-            naziv_stavke_troskovnik: troskovnikItem ? troskovnikItem.naziv_artikla : `Stavka ${item.rb}`,
-            jedinica_mjere_troskovnik: troskovnikItem ? troskovnikItem.mjerna_jedinica : item.unit,
-            kolicina_troskovnik: troskovnikItem ? troskovnikItem.trazena_kolicina : 1,
-            
-            // Enhanced specific fields
-            dobavljac: item.supplier,
-            izvor: item.source,
-            calculation_source: 'enhanced_results',
-            price_formula: `Direktno uneseno: €${item.pricePerPiece.toFixed(2)}`,
-            weight_used: item.calculatedWeight || item.weight || 0,
-            price_per_kg: item.pricePerKg || 0
-        };
-        
-        tablicaRabata.push(rabataEntry);
-        // console.log(`✅ Added enhanced entry ${index + 1}: ${rabataEntry.sifra_artikla} - ${rabataEntry.naziv_artikla}`);
-    });
-    
-    // Sort by RB then by šifra
-    tablicaRabata.sort((a, b) => {
-        if (a.redni_broj_grupe !== b.redni_broj_grupe) {
-            return a.redni_broj_grupe - b.redni_broj_grupe;
-        }
-        return a.sifra_artikla.localeCompare(b.sifra_artikla);
-    });
-    
-    // Update display
-    updateTablicaRabataDisplay();
-    
-    // Show success message
-    const totalValue = tablicaRabata.reduce((sum, item) => sum + (item.cijena * item.kolicina_troskovnik), 0);
-    
-    showMessage('success', 
-        `✅ Tablica rabata generirana iz enhanced rezultata!\n\n` +
-        `📊 Ukupno stavki: ${tablicaRabata.length}\n` +
-        `💰 Ukupna vrijednost: €${totalValue.toFixed(2)}\n` +
-        `🏠 Naši artikli (LAGER/URPD/WEIGHT DATABASE)\n` +
-        `🎯 S direktno unesenim cijenama\n` +
-        `⚡ Workflow completed!`, 
-        'tablicaRabataStatus'
-    );
-    
-    // Switch to tablica rabata tab
-    showTab('tablicaRabata');
-    
-    // console.log('✅ Enhanced tablica rabata generation completed:', tablicaRabata.length, 'entries');
-}
+// NOTE: generateFromResults() is now centrally defined in enhanced-functions.js and exported as window.generateFromResults
 
 /**
  * Get troškovnik item for RB
@@ -757,23 +537,7 @@ window.removeTablicaRabataItem = removeTablicaRabataItem;
 window.exportTablicaRabataCSV = exportTablicaRabataCSV;
 window.exportTablicaRabataExcel = exportTablicaRabataExcel;
 window.clearTablicaRabata = clearTablicaRabata;
-// EKSPLICITNO BRISANJE STARE FUNKCIJE - koristimo novu iz enhanced-functions.js
-console.log('🔥🔥🔥🔥🔥 TABLICARABATA.JS SE UČITAVA - BRIŠEM STARU FUNKCIJU!');
-console.log('🔥🔥🔥🔥🔥 generateFromResults type PRIJE brisanja:', typeof window.generateFromResults);
-
-// Provjeri je li to naša nova funkcija s debug kodom
-if (typeof window.generateFromResults !== 'undefined') {
-    const funcStr = window.generateFromResults.toString();
-    if (funcStr.includes('JEBENI KRITIČNI DEBUG')) {
-        console.log('🔥🔥🔥🔥🔥 NOVA FUNKCIJA JE VEĆ UČITANA - NE BRIŠEM!');
-    } else {
-        console.log('🔥🔥🔥🔥🔥 PRONAŠAO STARU FUNKCIJU - BRIŠEM JU...');
-        delete window.generateFromResults;
-        console.log('🔥🔥🔥🔥🔥 generateFromResults type NAKON brisanja:', typeof window.generateFromResults);
-    }
-}
-
-// window.generateFromResults = generateFromResults; // COMMENTED OUT: Using enhanced version from enhanced-functions.js
+// NOTE: generateFromResults is exported from enhanced-functions.js
 window.getGroupColor = getGroupColor;
 window.getTroskovnikItemForRB = getTroskovnikItemForRB;
 window.showMissingRBs = showMissingRBs;
@@ -812,16 +576,15 @@ function exportTablicaRabataExcel() {
         // Add header row
         excelData.push([
             'Šifra artikla', 'Naziv artikla', 'J.M.', 'Cijena za tab. (€)',
-            'RB Grupe', 'Naziv stavke u troškovniku', 'J.M. troškovnik', 'Količina', 
-            'Ukupno (€)', 'Dobavljač', 'Izvor', 'Enhanced', 'Formula cijene', 
+            'RB Grupe', 'Naziv stavke u troškovniku', 'J.M. troškovnik', 'Količina',
+            'Dobavljač', 'Izvor', 'Enhanced', 'Formula cijene',
             'Težina (kg)', 'VPC/kg (€)', 'Datum generiranja'
         ]);
-        
+
         // Add data rows
         tablicaRabata.forEach(item => {
-            const ukupno = item.cijena * item.kolicina_troskovnik;
             const isEnhanced = item.calculation_source === 'enhanced_results';
-            
+
             excelData.push([
                 item.sifra_artikla || '',
                 item.naziv_artikla || '',
@@ -831,7 +594,6 @@ function exportTablicaRabataExcel() {
                 item.naziv_stavke_troskovnik || '',
                 item.jedinica_mjere_troskovnik || '',
                 item.kolicina_troskovnik || 0,
-                parseFloat(ukupno.toFixed(2)),
                 item.dobavljac || 'N/A',
                 item.izvor || 'N/A',
                 isEnhanced ? 'Da' : 'Ne',
@@ -848,22 +610,18 @@ function exportTablicaRabataExcel() {
         
         // Set column widths
         const wscols = [
-            {wch: 12}, {wch: 35}, {wch: 8}, {wch: 15}, {wch: 10}, {wch: 35}, 
-            {wch: 12}, {wch: 10}, {wch: 12}, {wch: 20}, {wch: 15}, {wch: 10}, 
+            {wch: 12}, {wch: 35}, {wch: 8}, {wch: 15}, {wch: 10}, {wch: 35},
+            {wch: 12}, {wch: 10}, {wch: 20}, {wch: 15}, {wch: 10},
             {wch: 30}, {wch: 12}, {wch: 12}, {wch: 15}
         ];
         ws['!cols'] = wscols;
         
         // ENHANCED: Add Excel formulas to calculation columns
         for (let rowIndex = 2; rowIndex <= tablicaRabata.length + 1; rowIndex++) {
-            // I: Ukupno (Cijena × Količina) = D × H
-            const ukupnoFormula = `D${rowIndex}*H${rowIndex}`;
-            ws[`I${rowIndex}`] = createExcelFormulaCell(ukupnoFormula, ws[`I${rowIndex}`]?.v || 0);
-            
-            // O: VPC/kg (Cijena / Težina) = D / N
-            if (ws[`N${rowIndex}`] && ws[`N${rowIndex}`].v && ws[`N${rowIndex}`].v > 0) {
-                const vpcFormula = `D${rowIndex}/N${rowIndex}`;
-                ws[`O${rowIndex}`] = createExcelFormulaCell(vpcFormula, ws[`O${rowIndex}`]?.v || 0);
+            // N: VPC/kg (Cijena / Težina) = D / M
+            if (ws[`M${rowIndex}`] && ws[`M${rowIndex}`].v && ws[`M${rowIndex}`].v > 0) {
+                const vpcFormula = `D${rowIndex}/M${rowIndex}`;
+                ws[`N${rowIndex}`] = createExcelFormulaCell(vpcFormula, ws[`N${rowIndex}`]?.v || 0);
             }
         }
         
@@ -882,18 +640,16 @@ function exportTablicaRabataExcel() {
         
         // Save file
         XLSX.writeFile(wb, filename);
-        
+
         // Show success message
-        const totalValue = tablicaRabata.reduce((sum, item) => sum + (item.cijena * item.kolicina_troskovnik), 0);
         const enhancedCount = tablicaRabata.filter(item => item.calculation_source === 'enhanced_results').length;
-        
-        showMessage('success', 
+
+        showMessage('success',
             `✅ Enhanced Excel tablica rabata exportana!\n\n` +
             `📁 Datoteka: ${filename}\n` +
             `📊 Stavki: ${tablicaRabata.length}\n` +
             `⚡ Enhanced stavki: ${enhancedCount}\n` +
-            `💰 Ukupna vrijednost: €${totalValue.toFixed(2)}\n` +
-            `🎯 S direktno unesenim cijenama iz autocomplete`, 
+            `🎯 S direktno unesenim cijenama iz autocomplete`,
             'tablicaRabataStatus'
         );
         
@@ -920,8 +676,7 @@ function exportTablicaRabataXML() {
     }
     
     try {
-        // Calculate summary data (same as Excel export)  
-        const totalValue = tablicaRabata.reduce((sum, item) => sum + (item.cijena * item.kolicina_troskovnik), 0);
+        // Calculate summary data (same as Excel export)
         const enhancedCount = tablicaRabata.filter(item => item.calculation_source === 'enhanced_results').length;
         
         // Create proper Excel XML Spreadsheet format
@@ -1031,19 +786,18 @@ function exportTablicaRabataXML() {
         xmlContent += '<Column ss:Width="200"/>\n'; // Naziv stavke u troškovniku
         xmlContent += '<Column ss:Width="80"/>\n';  // J.M. troškovnik
         xmlContent += '<Column ss:Width="80"/>\n';  // Količina
-        xmlContent += '<Column ss:Width="80"/>\n';  // Ukupno
         xmlContent += '<Column ss:Width="120"/>\n'; // Dobavljač
         xmlContent += '<Column ss:Width="60"/>\n';  // Izvor
         xmlContent += '<Column ss:Width="70"/>\n';  // Enhanced
         xmlContent += '<Column ss:Width="120"/>\n'; // Formula cijene
         xmlContent += '<Column ss:Width="80"/>\n';  // Težina
         xmlContent += '<Column ss:Width="80"/>\n';  // VPC/kg
-        
+
         // Header row
         const headers = [
             'Šifra artikla', 'Naziv artikla', 'J.M.', 'Cijena za tab. (€)',
-            'RB Grupe', 'Naziv stavke u troškovniku', 'J.M. troškovnik', 'Količina', 
-            'Ukupno (€)', 'Dobavljač', 'Izvor', 'Enhanced', 'Formula cijene', 'Težina (kg)', 'VPC/kg (€)'
+            'RB Grupe', 'Naziv stavke u troškovniku', 'J.M. troškovnik', 'Količina',
+            'Dobavljač', 'Izvor', 'Enhanced', 'Formula cijene', 'Težina (kg)', 'VPC/kg (€)'
         ];
         
         xmlContent += '<Row>\n';
@@ -1097,11 +851,7 @@ function exportTablicaRabataXML() {
             
             // Količina
             xmlContent += `<Cell ss:StyleID="Number"><Data ss:Type="Number">${(item.kolicina_troskovnik || 0).toFixed(3)}</Data></Cell>\n`;
-            
-            // Ukupno
-            const ukupno = (item.cijena || 0) * (item.kolicina_troskovnik || 0);
-            xmlContent += `<Cell ss:StyleID="Currency"><Data ss:Type="Number">${ukupno.toFixed(2)}</Data></Cell>\n`;
-            
+
             // Dobavljač
             xmlContent += `<Cell ss:StyleID="Text"><Data ss:Type="String">${escapeXML(item.dobavljac || 'N/A')}</Data></Cell>\n`;
             
@@ -1141,14 +891,13 @@ function exportTablicaRabataXML() {
         URL.revokeObjectURL(url);
         
         // Show success message
-        showMessage('success', 
+        showMessage('success',
             `✅ Excel XML tablica rabata exportana!\n` +
             `📁 Datoteka: ${filename}\n` +
             `📊 Stavki: ${tablicaRabata.length}\n` +
             `⚡ Enhanced stavki: ${enhancedCount}\n` +
-            `💰 Ukupna vrijednost: €${totalValue.toFixed(2)}\n` +
             `🎯 S direktno unesenim cijenama iz autocomplete\n` +
-            `💡 Excel XML format - ERP kompatibilan!`, 
+            `💡 Excel XML format - ERP kompatibilan!`,
             'tablicaRabataStatus'
         );
         

@@ -5,31 +5,7 @@
  * FIXED: Unique ID generation problem that caused all updates to go to first item
  */
 
-/**
- * NEW: Enhanced function to determine if article is truly "ours"
- * @param {string} source - Article source
- * @param {string} code - Article code (optional)
- * @returns {boolean} True if truly our article
- */
-function isTrulyOurArticle(source, code) {
-    if (!source) return false;
-
-    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
-    const lowerSource = source.toLowerCase();
-    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
-
-    if (isLagerOrUrpd) {
-        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
-    }
-
-    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
-    const isDirectWeightDbArticle = code &&
-                                   typeof window.weightDatabase !== 'undefined' &&
-                                   window.weightDatabase.has(code) &&
-                                   lowerSource.includes('weight database');
-
-    return isDirectWeightDbArticle;
-}
+// NOTE: window.isTrulyOurArticle() is centrally defined in utils.js and exported as window.isTrulyOurArticle
 
 // ===== CONFIGURATION =====
 const TROSKOVNIK_CONFIG = {
@@ -223,19 +199,10 @@ class TroskovnikData {
             item[field] = parseDecimalQuantity(value) || 0;
             // console.log(`📦 Quantity update: ${field} ${oldValue} → ${item[field]} (decimal support)`);
         } else if (field === 'ruc_per_kg') {
-            const oldValue = item[field];
-            const newRucPerKg = this.formatNumber(value, 2);
-            item[field] = newRucPerKg;
-            
-            // Reverse calculation: update izlazna_cijena based on ruc_per_kg
-            // Formula: izlazna_cijena = nabavna_cijena_1 + (ruc_per_kg * tezina)
-            const weight = parseFloat(item.tezina) || 0;
-            if (weight > 0 && newRucPerKg >= 0) {
-                const newIzlaznaCijena = item.nabavna_cijena_1 + (newRucPerKg * weight);
-                item.izlazna_cijena = this.formatNumber(newIzlaznaCijena, 2);
-                // console.log(`🔄 RUC/KG reverse calc: ${newRucPerKg}€/kg * ${weight}kg = ${newIzlaznaCijena}€ output price`);
-            }
-            // console.log(`📊 RUC/KG update: ${field} ${oldValue} → ${item[field]}`);
+            // RUC/KG je READONLY vrijednost - ne može se direktno mijenjati
+            // Izračunava se automatski iz: (izlazna_cijena - nabavna_cijena_1) / tezina
+            console.warn('⚠️ RUC/KG je READONLY polje - ne može se direktno mijenjati. Mijenja se automatski iz cijene.');
+            return false;
         } else {
             const oldValue = item[field];
             item[field] = value || '';
@@ -342,9 +309,14 @@ class TroskovnikUI {
             this.renderEmpty();
             return;
         }
-        
+
         this.showControls();
         this.renderTable();
+
+        // Update RB Selector max based on troškovnik length
+        if (typeof window.updateRBSelectorMax === 'function') {
+            window.updateRBSelectorMax();
+        }
     }
     
     static renderEmpty() {
@@ -582,9 +554,10 @@ class TroskovnikUI {
         const total = this.getTotalDisplay(item);
         const percentage = this.getPercentageDisplay(item, grandTotal);
         const linkIcon = this.getLinkIcon(item);
-        
-        return '<tr style="' + style + '">' +
-            '<td style="text-align: center; font-size: 14px;"><strong>' + item.redni_broj + '</strong></td>' +
+        const rbCell = this.getRBCellHTML(item);
+
+        return '<tr data-rb="' + item.redni_broj + '" style="' + style + '">' +
+            rbCell +
             '<td ' + comment.attributes + ' ' + hover.attributes + ' style="font-size: 14px; word-wrap: break-word; overflow-wrap: break-word; max-width: 350px; min-width: 250px; padding: 8px; position: relative; white-space: normal; overflow: visible; text-overflow: unset;">' + item.naziv_artikla + comment.icon + linkIcon + '</td>' +
             '<td style="text-align: center; font-size: 14px;">' + item.mjerna_jedinica + '</td>' +
             '<td style="text-align: center;">' + this.renderWeightInput(item) + '</td>' +
@@ -745,15 +718,78 @@ class TroskovnikUI {
     
     static getLinkIcon(item) {
         // Check if there are results for this RB
-        const hasResults = results && results.length > 0 && results.some(r => r.rb == item.redni_broj);
-        
-        if (hasResults) {
-            return '<span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%);"><a href="#" onclick="event.stopPropagation(); scrollToResultsForRB(' + item.redni_broj + ')" style="text-decoration: none; color: #059669; font-size: 14px; padding: 2px 6px; border-radius: 3px; background: #f0fff4; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.1);" title="Idi na rezultate za RB ' + item.redni_broj + '">→</a></span>';
+        const resultsForRB = results && results.length > 0 ? results.filter(r => r.rb == item.redni_broj) : [];
+
+        if (resultsForRB.length === 0) {
+            return '';
         }
-        
-        return '';
+
+        // Find first choice (lowest price per kg)
+        const sortedResults = resultsForRB.sort((a, b) => {
+            const priceA = a.hasUserPrice ? a.pricePerKg : (a.pricePerKg || 0);
+            const priceB = b.hasUserPrice ? b.pricePerKg : (b.pricePerKg || 0);
+            return priceA - priceB;
+        });
+
+        const firstChoice = sortedResults[0];
+
+        // Build tooltip with first choice details
+        let tooltip = 'Idi na rezultate za RB ' + item.redni_broj;
+        if (firstChoice) {
+            const firstChoicePrice = firstChoice.hasUserPrice ? firstChoice.pricePerPiece : firstChoice.price;
+            tooltip = 'Prvi izbor: ' + firstChoice.code + ' - ' + firstChoice.name +
+                      '\nDobavljač: ' + (firstChoice.supplier || 'N/A') +
+                      '\nCijena: €' + (firstChoicePrice || 0).toFixed(2) +
+                      '\n\nKlik za skok na rezultate';
+        }
+
+        // Badge for first choice
+        let badge = '';
+        if (firstChoice && resultsForRB.length > 1) {
+            badge = '<span style="background: #fbbf24; color: #92400e; padding: 2px 4px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 4px;">🥇1/' + resultsForRB.length + '</span>';
+        }
+
+        return '<span style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%);">' +
+               badge +
+               '<a href="#" onclick="event.stopPropagation(); scrollToResultsForRB(' + item.redni_broj + ')" style="text-decoration: none; color: #059669; font-size: 14px; padding: 2px 6px; border-radius: 3px; background: #f0fff4; display: inline-block; box-shadow: 0 1px 2px rgba(0,0,0,0.1);" title="' + tooltip + '">→</a></span>';
     }
-    
+
+    static getRBCellHTML(item) {
+        // Check if there are results for this RB
+        const resultsForRB = results && results.length > 0 ? results.filter(r => r.rb == item.redni_broj) : [];
+
+        if (resultsForRB.length === 0) {
+            // No results - regular R.B. cell
+            return '<td style="text-align: center; font-size: 14px;"><strong>' + item.redni_broj + '</strong></td>';
+        }
+
+        // Find first choice (lowest price per kg)
+        const sortedResults = resultsForRB.sort((a, b) => {
+            const priceA = a.hasUserPrice ? a.pricePerKg : (a.pricePerKg || 0);
+            const priceB = b.hasUserPrice ? b.pricePerKg : (b.pricePerKg || 0);
+            return priceA - priceB;
+        });
+
+        const firstChoice = sortedResults[0];
+
+        // Build tooltip
+        let tooltip = 'Klik za skok na rezultate\\n' + resultsForRB.length + ' rezultat(a) pronađeno';
+        if (firstChoice) {
+            const firstChoicePrice = firstChoice.hasUserPrice ? firstChoice.pricePerPiece : firstChoice.price;
+            tooltip += '\\n\\nPrvi izbor:\\n' + firstChoice.code + ' - ' + firstChoice.name +
+                      '\\nDobavljač: ' + (firstChoice.supplier || 'N/A') +
+                      '\\nCijena: €' + (firstChoicePrice || 0).toFixed(2);
+        }
+
+        // Clickable R.B. cell with hover effect
+        return '<td onclick="scrollToResultsForRB(' + item.redni_broj + ')" ' +
+               'style="text-align: center; font-size: 14px; cursor: pointer; transition: all 0.2s ease; background: #f0fff4; border-left: 3px solid #059669;" ' +
+               'onmouseover="this.style.backgroundColor=\'#dcfce7\'; this.style.fontWeight=\'bold\';" ' +
+               'onmouseout="this.style.backgroundColor=\'#f0fff4\'; this.style.fontWeight=\'normal\';" ' +
+               'title="' + tooltip + '">' +
+               '<strong style="color: #059669;">📊 ' + item.redni_broj + '</strong></td>';
+    }
+
     static renderWeightInput(item) {
         const color = item.tezina > 0 ? '#059669' : '#d97706';
         const bg = item.tezina > 0 ? '#ecfdf5' : '#fef3c7';
@@ -784,14 +820,12 @@ class TroskovnikUI {
         const borderColor = rucPerKg >= 0.31 ? '#059669' : rucPerKg >= 0.25 ? '#d97706' : '#dc2626';
         const bg = rucPerKg >= 0.31 ? '#ecfdf5' : rucPerKg >= 0.25 ? '#fef3c7' : '#fef2f2';
         const textColor = '#000000'; // BLACK text color as requested
-        
+
         return '<div style="display: flex; align-items: center; gap: 3px;">' +
-               '<input type="number" step="0.01" value="' + rucPerKg.toFixed(2) + '"' +
-               ' onchange="TroskovnikData.update(' + item.id + ', \'ruc_per_kg\', this.value); TroskovnikUI.render()"' +
-               ' onfocus="this.select()"' +
+               '<input type="number" step="0.01" value="' + rucPerKg.toFixed(2) + '" readonly' +
                ' style="width: 60px; padding: 6px; border: 1px solid ' + borderColor + '; border-radius: 4px;' +
-               ' font-size: 14px; font-weight: bold; color: ' + textColor + '; background: ' + bg + ';"' +
-               ' title="Editabilan RUC po kilogramu" placeholder="0.00" id="ruc_per_kg-' + item.id + '">' +
+               ' font-size: 14px; font-weight: bold; color: ' + textColor + '; background: ' + bg + '; cursor: not-allowed; opacity: 0.9;"' +
+               ' title="READONLY: Izračunato automatski iz (Izlazna - Nabavna) / Težina" id="ruc_per_kg-' + item.id + '">' +
                '<span style="font-size: 12px; color: #6b7280; font-weight: normal;">€/kg</span>' +
                '</div>';
     }
@@ -1453,8 +1487,9 @@ function exportTroskovnikCSV() {
     
     // ENHANCED: CSV headers with PDV columns and RUC/KG
     const csvHeaders = [
-        'R.B.', 'Naziv artikla', 'J.M.', 'Težina (kg)', 'Količina', 'Izlazna cijena (€)', 
-        'RUC/KG (€/kg)', 'RUC (€)', 'Nabavna 1 (€)', 'Dobavljač 1', 'Nabavna 2 (€)', 'Dobavljač 2', 
+        'R.B.', 'Naziv artikla', 'J.M.', 'Težina (kg)', 'Količina', 'Izlazna cijena (€)',
+        'RUC/KG (€/kg)', 'RUC (€)', 'Nabavna 1 (€)', 'Dobavljač 1', 'Nabavna 2 (€)', 'Dobavljač 2',
+        'Naziv artikla 1', 'Šifra artikla 1', 'Naziv artikla 2', 'Šifra artikla 2',
         'Marža (%)', 'Najniža cijena (€)', 'Rezultati', 'Vrijednost (€)', 'Stopa PDV', 'Iznos PDV', 'Udio (%)', 'Komentar', 'Datum'
     ];
     
@@ -1498,7 +1533,7 @@ function exportTroskovnikCSV() {
                 }
                 
                 // Check if this result is from "our" source (LAGER/URPD) - ENHANCED LOGIC
-                const isOurSource = isTrulyOurArticle(result.source, result.code);
+                const isOurSource = window.isTrulyOurArticle(result.source, result.code);
                 
                 if (isOurSource) {
                     // Try to get PDV data using the result's code
@@ -1538,7 +1573,29 @@ function exportTroskovnikCSV() {
         const ruc = item.izlazna_cijena - item.nabavna_cijena_1;
         const weight = parseFloat(item.tezina) || 0;
         const rucPerKg = (ruc > 0 && weight > 0) ? (ruc / weight) : 0;
-        
+
+        // ENHANCED: Extract article names and codes from results using isFirstChoice flag
+        let nazivArtikla1 = '';
+        let sifraArtikla1 = '';
+        let nazivArtikla2 = '';
+        let sifraArtikla2 = '';
+
+        if (correspondingResults.length > 0) {
+            // First choice (isFirstChoice = true)
+            const artikal1 = correspondingResults.find(r => r.isFirstChoice === true);
+            if (artikal1) {
+                nazivArtikla1 = artikal1.name || '';
+                sifraArtikla1 = artikal1.code || '';
+            }
+
+            // Second choice (isFirstChoice = false)
+            const artikal2 = correspondingResults.find(r => r.isFirstChoice === false);
+            if (artikal2) {
+                nazivArtikla2 = artikal2.name || '';
+                sifraArtikla2 = artikal2.code || '';
+            }
+        }
+
         return [
             item.redni_broj,
             item.naziv_artikla,
@@ -1552,6 +1609,10 @@ function exportTroskovnikCSV() {
             item.dobavljac_1 || '',
             item.nabavna_cijena_2.toFixed(2),
             item.dobavljac_2 || '',
+            nazivArtikla1,
+            sifraArtikla1,
+            nazivArtikla2,
+            sifraArtikla2,
             item.marza.toFixed(1),
             item.najniza_cijena.toFixed(2),
             item.found_results || 0,
@@ -1579,12 +1640,12 @@ function exportTroskovnikCSV() {
                 }
                 
                 // Check if this is an external article (not ours) with custom PDV stopa
-                if (!isTrulyOurArticle(result.source, result.code) && 
+                if (!window.isTrulyOurArticle(result.source, result.code) && 
                     result.customPdvStopa) {
                     return true;
                 }
                 
-                const isOurSource = isTrulyOurArticle(result.source, result.code);
+                const isOurSource = window.isTrulyOurArticle(result.source, result.code);
                 
                 if (isOurSource) {
                     if (typeof window.getArticleWeightAndPDV === 'function') {
@@ -1641,8 +1702,9 @@ function exportTroskovnikExcel() {
     
     // ENHANCED: Prepare data for Excel with PDV columns including "Ukupno sa PDV"
     const excelData = [
-        ['R.B.', 'Naziv artikla', 'J.M.', 'Težina (kg)', 'Količina', 'Izlazna cijena (€)', 
-         'RUC (€)', 'Nabavna 1 (€)', 'Dobavljač 1', 'Nabavna 2 (€)', 'Dobavljač 2', 
+        ['R.B.', 'Naziv artikla', 'J.M.', 'Težina (kg)', 'Količina', 'Izlazna cijena (€)',
+         'RUC (€)', 'Nabavna 1 (€)', 'Dobavljač 1', 'Nabavna 2 (€)', 'Dobavljač 2',
+         'Naziv artikla 1', 'Šifra artikla 1', 'Naziv artikla 2', 'Šifra artikla 2',
          'Marža (%)', 'Najniža cijena (€)', 'Rezultati', 'Vrijednost (€)', 'Stopa PDV', 'Iznos PDV', 'Ukupno sa PDV', 'Udio (%)', 'Komentar', 'Datum']
     ];
     
@@ -1707,7 +1769,7 @@ function exportTroskovnikExcel() {
                 }
                 
                 // Check if this result is from "our" source (LAGER/URPD) - ENHANCED LOGIC
-                const isOurSource = isTrulyOurArticle(result.source, result.code);
+                const isOurSource = window.isTrulyOurArticle(result.source, result.code);
                 
                 if (isOurSource) {
                     // Try to get PDV data using the result's code
@@ -1753,9 +1815,31 @@ function exportTroskovnikExcel() {
         if (!pdvStopa) {
             // console.log(`ℹ️ No PDV data found for RB${item.redni_broj} (${correspondingResults.length} results found)`);
         }
-        
+
         const ruc = item.izlazna_cijena - item.nabavna_cijena_1;
-        
+
+        // ENHANCED: Extract article names and codes from results using isFirstChoice flag
+        let nazivArtikla1 = '';
+        let sifraArtikla1 = '';
+        let nazivArtikla2 = '';
+        let sifraArtikla2 = '';
+
+        if (correspondingResults.length > 0) {
+            // First choice (isFirstChoice = true)
+            const artikal1 = correspondingResults.find(r => r.isFirstChoice === true);
+            if (artikal1) {
+                nazivArtikla1 = artikal1.name || '';
+                sifraArtikla1 = artikal1.code || '';
+            }
+
+            // Second choice (isFirstChoice = false)
+            const artikal2 = correspondingResults.find(r => r.isFirstChoice === false);
+            if (artikal2) {
+                nazivArtikla2 = artikal2.name || '';
+                sifraArtikla2 = artikal2.code || '';
+            }
+        }
+
         excelData.push([
             item.redni_broj,
             item.naziv_artikla,
@@ -1768,6 +1852,10 @@ function exportTroskovnikExcel() {
             item.dobavljac_1 || '',
             item.nabavna_cijena_2,
             item.dobavljac_2 || '',
+            nazivArtikla1,
+            sifraArtikla1,
+            nazivArtikla2,
+            sifraArtikla2,
             parseFloat(item.marza.toFixed(1)),
             item.najniza_cijena,
             item.found_results || 0,
@@ -1883,7 +1971,7 @@ function exportTroskovnikExcel() {
                 }
                 
                 // Check if this is an external article (not ours) with custom PDV stopa
-                if (!isTrulyOurArticle(result.source, result.code) && 
+                if (!window.isTrulyOurArticle(result.source, result.code) && 
                     result.customPdvStopa) {
                     return true;
                 }

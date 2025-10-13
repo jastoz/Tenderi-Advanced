@@ -631,25 +631,67 @@ function deserializeAppState(state) {
             console.warn('⚠️ reclassifyResultsAfterStateLoad not available - results may have old classification');
         }
 
+        // CRITICAL: Validate and fix isFirstChoice flags
+        // Ensures only ONE article per RB group is marked as first choice
+        if (typeof window.validateAndFixFirstChoiceFlags === 'function') {
+            console.log('🔄 Validating isFirstChoice flags after state load...');
+            window.validateAndFixFirstChoiceFlags();
+            console.log('✅ isFirstChoice flags validated and fixed');
+        } else {
+            console.warn('⚠️ validateAndFixFirstChoiceFlags not available');
+        }
+
         // CRITICAL: Refresh results display AFTER weight/PDV updates to show correct colors
-        // Use timeout to ensure all database operations are complete
+        // FIXED: Increased delay from 100ms to 250ms to ensure all databases are fully loaded
         setTimeout(() => {
+            // EXPLICIT CHECK: Verify databases are ready before display refresh
+            const databasesReady = typeof window.weightDatabase !== 'undefined' &&
+                                  typeof window.pdvDatabase !== 'undefined' &&
+                                  typeof window.isTrulyOurArticle === 'function';
+
+            if (!databasesReady) {
+                console.warn('⚠️ WARNING: Databases not ready yet for display refresh!');
+                console.warn('   - weightDatabase:', typeof window.weightDatabase, window.weightDatabase?.size || 0);
+                console.warn('   - pdvDatabase:', typeof window.pdvDatabase, window.pdvDatabase?.size || 0);
+                console.warn('   - isTrulyOurArticle:', typeof window.isTrulyOurArticle);
+            } else {
+                console.log('✅ Databases verified ready for display refresh');
+                console.log('   - weightDatabase size:', window.weightDatabase.size);
+                console.log('   - pdvDatabase size:', window.pdvDatabase.size);
+            }
+
             if (typeof updateResultsDisplay === 'function') {
                 // Debug: Test the isTrulyOurArticle function with sample data
                 if (typeof window.isTrulyOurArticle === 'function' && typeof window.weightDatabase !== 'undefined') {
                     console.log('🔍 DEBUG: Testing isTrulyOurArticle after state loading:');
-                    console.log('   - weightDatabase size:', window.weightDatabase.size);
                     console.log('   - Sample test 2834:', window.isTrulyOurArticle('12.09.2025 Vagros Anex (1) - Lager', '2834'));
                     console.log('   - Sample test 641:', window.isTrulyOurArticle('12.09.2025 Vagros Anex (1) - Lager', '641'));
                     console.log('   - Sample test 6617:', window.isTrulyOurArticle('12.09.2025 Vagros Anex (1) - Urpd', '6617'));
                 }
 
                 updateResultsDisplay();
-                console.log('✅ Results display refreshed after weight/PDV classification updates');
+                console.log('✅ Results display refreshed after weight/PDV classification updates (250ms delay)');
+
+                // ADDITIONAL SAFETY: Force one more refresh after 500ms to ensure stability
+                setTimeout(() => {
+                    if (typeof updateResultsDisplay === 'function') {
+                        updateResultsDisplay();
+                        console.log('✅✅ FINAL display refresh completed (500ms delay) - colors should be stable now');
+
+                        // Log final result counts for verification
+                        if (typeof results !== 'undefined') {
+                            const ourCount = results.filter(r => window.isTrulyOurArticle(r.source, r.code)).length;
+                            const externalCount = results.filter(r => !window.isTrulyOurArticle(r.source, r.code)).length;
+                            console.log('📊 Final classification count:');
+                            console.log('   - 🏠 NAŠ (LAGER/URPD):', ourCount);
+                            console.log('   - 📋 PO CJENIKU (external):', externalCount);
+                        }
+                    }
+                }, 250); // Additional 250ms = total 500ms from initial load
             } else {
                 console.warn('⚠️ updateResultsDisplay not available - colors may not update correctly');
             }
-        }, 100); // Small delay to ensure databases are ready
+        }, 250); // INCREASED from 100ms to 250ms for database stability
 
         // Force refresh troškovnik colors after weight database restoration
         if (typeof refreshTroskovnikColors === 'function') {
@@ -748,19 +790,20 @@ function clearAllData() {
 
 /**
  * Updates all display components
+ * NOTE: Results display is intentionally excluded here and handled separately
+ * with proper delay after database loading in deserializeAppState()
  */
 function updateAllDisplays() {
     // console.log('🔄 Updating all displays...');
-    
+
     try {
         // Update statistics
         updateArticleStats();
-        
-        // Update each tab display if functions exist
-        if (typeof updateResultsDisplay === 'function') {
-            updateResultsDisplay();
-        }
-        
+
+        // REMOVED: updateResultsDisplay() - Now handled separately with proper timing
+        // This prevents premature display before weightDatabase/pdvDatabase are loaded
+        // Results will be refreshed after reclassification with proper delay
+
         if (typeof updateTroskovnikDisplay === 'function') {
             updateTroskovnikDisplay();
         }
@@ -1712,6 +1755,63 @@ function loadArticlesOnly(file) {
     reader.readAsText(file, 'utf-8');
 }
 
+/**
+ * Validates and fixes isFirstChoice flags after state load
+ * Ensures only ONE article per RB group is marked as first choice
+ */
+function validateAndFixFirstChoiceFlags() {
+    if (!results || results.length === 0) {
+        console.log('⚠️ No results to validate');
+        return;
+    }
+
+    console.log('🔍 Validating isFirstChoice flags...');
+
+    // Group results by RB
+    const groupedByRB = {};
+    results.forEach(result => {
+        const rb = result.rb || 'PENDING';
+        if (!groupedByRB[rb]) {
+            groupedByRB[rb] = [];
+        }
+        groupedByRB[rb].push(result);
+    });
+
+    let fixedCount = 0;
+    let totalGroups = Object.keys(groupedByRB).length;
+
+    // Validate each group
+    Object.entries(groupedByRB).forEach(([rb, groupItems]) => {
+        // Count how many are marked as first choice
+        const firstChoiceItems = groupItems.filter(item => item.isFirstChoice === true);
+
+        if (firstChoiceItems.length === 0) {
+            // No first choice - mark the first item (by ID) as first choice
+            console.log(`  ⚠️ RB ${rb}: No first choice found, marking first item (ID=${groupItems[0].id})`);
+            groupItems[0].isFirstChoice = true;
+            fixedCount++;
+        } else if (firstChoiceItems.length > 1) {
+            // Multiple first choices - keep only the first one (by ID)
+            console.log(`  ⚠️ RB ${rb}: ${firstChoiceItems.length} first choices found! Keeping only first item.`);
+
+            // Sort by ID to get consistent behavior
+            const sortedByID = [...groupItems].sort((a, b) => a.id - b.id);
+
+            // Mark all as NOT first choice
+            groupItems.forEach(item => item.isFirstChoice = false);
+
+            // Mark only the first (by ID) as first choice
+            sortedByID[0].isFirstChoice = true;
+            fixedCount++;
+        } else {
+            // Exactly 1 first choice - OK!
+            console.log(`  ✅ RB ${rb}: Correct (1 first choice)`);
+        }
+    });
+
+    console.log(`✅ Validation complete: ${fixedCount}/${totalGroups} groups fixed`);
+}
+
 // Expose remaining functions globally
 window.handleStateFileDrop = handleStateFileDrop;
 window.handleStateFileSelect = handleStateFileSelect;
@@ -1722,6 +1822,7 @@ window.deserializeAppState = deserializeAppState;
 window.saveTroskovnikOnly = saveTroskovnikOnly;
 window.loadTroskovnikOnly = loadTroskovnikOnly;
 window.loadArticlesOnly = loadArticlesOnly;
+window.validateAndFixFirstChoiceFlags = validateAndFixFirstChoiceFlags;
 
 // console.log('✅ State Manager module loaded - Save/Load functionality ready with Tablica Rabata support!');
 // console.log('💾 CRITICAL: saveAppState, quickSaveState, and loadAppState are now available globally!');

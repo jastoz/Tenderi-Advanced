@@ -616,8 +616,20 @@
     <!-- Sticky Search Bar -->
     <div class="sticky-search-bar">
         <div class="sticky-search-container">
-            <input type="text" id="globalSearchInput" class="sticky-search-input" 
-                   placeholder="🔍 ENHANCED Glavna tražilica - npr. '1. Ajvar 300-1000' za range pretragu (Enter za pretragu)..." 
+            <!-- RB Selector -->
+            <div style="display: flex; align-items: center; gap: 8px; margin-right: 12px;">
+                <label for="currentRB" style="font-weight: 700; color: #7c3aed; font-size: 14px;">RB:</label>
+                <input type="number"
+                       id="currentRB"
+                       value="1"
+                       min="1"
+                       style="width: 65px; padding: 8px 6px; font-size: 16px; font-weight: 700; text-align: center; border: 2px solid #7c3aed; border-radius: 6px; background: #f9fafb;"
+                       title="Redni broj (↑↓ mijenjaju broj i fokusiraju tražilicu)">
+                <span style="font-size: 12px; color: #6b7280;">↑↓</span>
+            </div>
+
+            <input type="text" id="globalSearchInput" class="sticky-search-input"
+                   placeholder="🔍 ENHANCED Glavna tražilica - npr. 'Ajvar 300-1000' za range pretragu (Enter za pretragu)..."
                    autocomplete="off">
             <button class="btn btn-primary" onclick="handleGlobalSearch()">Pretraži</button>
             <button class="btn btn-success" onclick="handleClearResults()">Očisti</button>
@@ -2404,20 +2416,193 @@
                 // Ako je fokus već u inputu ili textarea, ignoriraj
                 const active = document.activeElement;
                 if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
-                // Samo slovo T, bez modifikatora
+                // Samo slovo T, bez modifikatora - trigger za fokus tražilice (BEZ dodavanja 't')
                 if (event.key === 't' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
                     event.preventDefault();
                     if (globalInput) {
-                        // Prevent any scrolling by using preventScroll option
+                        // Fokusiraj tražilicu BEZ dodavanja slova 't'
                         globalInput.focus({preventScroll: true});
-                        globalInput.select();
-                        // Also add the 't' character that was intercepted
-                        globalInput.value = 't';
-                        // Position cursor at end
-                        globalInput.setSelectionRange(1, 1);
                     }
                 }
             });
+
+            // === RB SELECTOR: Globalna varijabla i sync logika ===
+            window.currentRB = 1; // Default RB
+
+            const rbInput = document.getElementById('currentRB');
+            if (rbInput) {
+                // Sync RB input s globalnom varijablom
+                rbInput.addEventListener('change', function() {
+                    const value = parseInt(this.value);
+                    // Ograniči na broj artikala u troškovniku
+                    const maxRB = (typeof troskovnik !== 'undefined' && troskovnik.length > 0)
+                                  ? troskovnik.length
+                                  : 999;
+                    window.currentRB = Math.max(1, Math.min(value, maxRB));
+                    this.value = window.currentRB;
+                    console.log(`🔢 RB promijenjeno na: ${window.currentRB}`);
+                });
+
+                // Click → select all za brzi unos
+                rbInput.addEventListener('click', function() {
+                    this.select();
+                });
+            }
+
+            // === ARROW UP/DOWN: Promjena RB + fokus tražilice ===
+            document.addEventListener('keydown', function(event) {
+                const active = document.activeElement;
+                const isInTextInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+                const isInSearchInput = active && active.id === 'globalSearchInput';
+
+                // Arrow Up/Down: Mijenjaju RB
+                if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                    // NOVI WORKFLOW: Ako je u search inputu I autocomplete je otvoren
+                    // → Promijeni RB, refresh autocomplete, ALI ne zatvaraj ga!
+                    if (isInSearchInput && typeof autocompleteVisible !== 'undefined' && autocompleteVisible) {
+                        event.preventDefault();
+
+                        const maxRB = (typeof troskovnik !== 'undefined' && troskovnik.length > 0)
+                                      ? troskovnik.length : 999;
+
+                        if (event.key === 'ArrowUp') {
+                            window.currentRB = Math.min(window.currentRB + 1, maxRB);
+                        } else if (event.key === 'ArrowDown') {
+                            window.currentRB = Math.max(window.currentRB - 1, 1);
+                        }
+
+                        // Update RB input display
+                        const rbInput = document.getElementById('currentRB');
+                        if (rbInput) rbInput.value = window.currentRB;
+
+                        // KRITIČNO: Refresh autocomplete s novim RB brojem
+                        const searchInput = document.getElementById('globalSearchInput');
+                        if (searchInput && searchInput.value && searchInput.value.trim().length >= 2) {
+                            if (typeof window.performLiveSearch === 'function' && typeof window.renderAutocomplete === 'function') {
+                                const results = window.performLiveSearch(searchInput.value.trim());
+                                window.renderAutocomplete(results);
+                            }
+                        }
+
+                        console.log(`🔢 RB changed in autocomplete: ${window.currentRB}`);
+                        return; // NE nastavljaj dalje (već smo handled)
+                    }
+
+                    // Ako je u nekom drugom text inputu (npr. RB input) → ne diraj
+                    if (isInTextInput && !isInSearchInput) {
+                        return;
+                    }
+
+                    // Ako NIJE u search inputu: Promijeni RB + fokusiraj tražilicu (kao prije)
+                    event.preventDefault();
+
+                    const maxRB = (typeof troskovnik !== 'undefined' && troskovnik.length > 0)
+                                  ? troskovnik.length
+                                  : 999;
+
+                    if (event.key === 'ArrowUp') {
+                        window.currentRB = Math.min(window.currentRB + 1, maxRB);
+                    } else if (event.key === 'ArrowDown') {
+                        window.currentRB = Math.max(window.currentRB - 1, 1);
+                    }
+
+                    // Update RB input display
+                    const rbInput = document.getElementById('currentRB');
+                    if (rbInput) rbInput.value = window.currentRB;
+
+                    // Fokusiraj tražilicu
+                    const searchInput = document.getElementById('globalSearchInput');
+                    if (searchInput) {
+                        searchInput.focus({preventScroll: true});
+                    }
+
+                    console.log(`🔢 RB: ${window.currentRB}`);
+                }
+            });
+
+            // === SHIFT+1 / SHIFT+2: Alternative shortcuts za RB promjenu (lijeva ruka) ===
+            document.addEventListener('keydown', function(event) {
+                // Shift+1 = RB + 1 (gore), Shift+2 = RB - 1 (dolje)
+                // Note: Shift+1 može biti '!' na nekim tipkovnicama, Shift+2 = '@'
+                if ((event.key === '1' || event.key === '2' || event.key === '!' || event.key === '@') && event.shiftKey) {
+                    const active = document.activeElement;
+                    const isInTextInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+                    const isInSearchInput = active && active.id === 'globalSearchInput';
+
+                    // Ako je u search inputu I autocomplete je otvoren
+                    if (isInSearchInput && typeof autocompleteVisible !== 'undefined' && autocompleteVisible) {
+                        event.preventDefault();
+
+                        const maxRB = (typeof troskovnik !== 'undefined' && troskovnik.length > 0)
+                                      ? troskovnik.length : 999;
+
+                        if (event.key === '1' || event.key === '!') {
+                            // Shift+1 = RB + 1 (gore)
+                            window.currentRB = Math.min(window.currentRB + 1, maxRB);
+                        } else if (event.key === '2' || event.key === '@') {
+                            // Shift+2 = RB - 1 (dolje)
+                            window.currentRB = Math.max(window.currentRB - 1, 1);
+                        }
+
+                        // Update RB display
+                        const rbInput = document.getElementById('currentRB');
+                        if (rbInput) rbInput.value = window.currentRB;
+
+                        // Refresh autocomplete s novim RB brojem
+                        const searchInput = document.getElementById('globalSearchInput');
+                        if (searchInput && searchInput.value && searchInput.value.trim().length >= 2) {
+                            if (typeof window.performLiveSearch === 'function' && typeof window.renderAutocomplete === 'function') {
+                                const results = window.performLiveSearch(searchInput.value.trim());
+                                window.renderAutocomplete(results);
+                            }
+                        }
+
+                        console.log(`🔢 RB changed (Shift+${event.key === '!' ? '1' : event.key === '@' ? '2' : event.key}): ${window.currentRB}`);
+                        return;
+                    }
+
+                    // Ako NIJE u autocomplete-u: Promijeni RB + fokusiraj tražilicu
+                    if (!isInTextInput || isInSearchInput) {
+                        event.preventDefault();
+
+                        const maxRB = (typeof troskovnik !== 'undefined' && troskovnik.length > 0)
+                                      ? troskovnik.length : 999;
+
+                        if (event.key === '1' || event.key === '!') {
+                            window.currentRB = Math.min(window.currentRB + 1, maxRB);
+                        } else if (event.key === '2' || event.key === '@') {
+                            window.currentRB = Math.max(window.currentRB - 1, 1);
+                        }
+
+                        const rbInput = document.getElementById('currentRB');
+                        if (rbInput) rbInput.value = window.currentRB;
+
+                        const searchInput = document.getElementById('globalSearchInput');
+                        if (searchInput) {
+                            searchInput.focus({preventScroll: true});
+                        }
+
+                        console.log(`🔢 RB (Shift+${event.key === '!' ? '1' : event.key === '@' ? '2' : event.key}): ${window.currentRB}`);
+                    }
+                }
+            });
+
+            // === UPDATE RB SELECTOR MAX: Ažurira max RB nakon učitavanja/promjene troškovnika ===
+            window.updateRBSelectorMax = function() {
+                const rbInput = document.getElementById('currentRB');
+                if (rbInput && typeof troskovnik !== 'undefined') {
+                    const maxRB = troskovnik.length > 0 ? troskovnik.length : 999;
+                    rbInput.setAttribute('max', maxRB);
+
+                    // Ako trenutni RB prelazi max, postavi na max
+                    if (window.currentRB > maxRB) {
+                        window.currentRB = maxRB;
+                        rbInput.value = maxRB;
+                    }
+
+                    console.log(`🔢 RB Selector max updated to: ${maxRB} (troškovnik items: ${troskovnik.length})`);
+                }
+            };
 
             console.log('✅ Enhanced Application with direct price management initialized successfully!');
             console.log('📊 Demo data removed - upload your own data');

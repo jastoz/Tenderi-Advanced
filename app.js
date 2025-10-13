@@ -130,27 +130,7 @@ function initializeStickySearchAutocomplete() {
  * Initialize enhanced event listeners
  */
 function initializeEnhancedEventListeners() {
-    // Enhanced article identification function
-    window.isTrulyOurArticle = function(source, code) {
-        if (!source) return false;
-
-        // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
-        const lowerSource = source.toLowerCase();
-        const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
-
-        if (isLagerOrUrpd) {
-            return true; // ✅ LAGER/URPD sheetovi su uvijek naši
-        }
-
-        // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
-        // Ovo će biti true samo za artikle dodane direktno iz weightDatabase (format sa zagradama)
-        const isDirectWeightDbArticle = code &&
-                                       typeof window.weightDatabase !== 'undefined' &&
-                                       window.weightDatabase.has(code) &&
-                                       lowerSource.includes('weight database');
-
-        return isDirectWeightDbArticle;
-    };
+    // NOTE: isTrulyOurArticle() is centrally defined in utils.js and exported as window.isTrulyOurArticle
 
     // Enhanced keyboard shortcuts for new functionality
     document.addEventListener('keydown', function(event) {
@@ -476,7 +456,7 @@ const AppState = {
     // Enhanced: Get enhanced statistics
     getEnhancedStats: function() {
         const resultsWithPrices = results.filter(r => r.hasUserPrice).length;
-        const ourArticles = results.filter(r => isTrulyOurArticle(r.source, r.code)).length;
+        const ourArticles = results.filter(r => window.isTrulyOurArticle(r.source, r.code)).length;
         const troskovnikWithResults = troskovnik.filter(t => t.found_results > 0).length;
         
         return {

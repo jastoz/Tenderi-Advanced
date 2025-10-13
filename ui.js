@@ -360,30 +360,11 @@ function processFile(file) {
                 article.date && article.date !== new Date().toISOString().split('T')[0]
             ).length;
             
-            // Enhanced article identification function
-            function isTrulyOurArticle(source, code) {
-                if (!source) return false;
-
-                // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
-                const lowerSource = source.toLowerCase();
-                const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
-
-                if (isLagerOrUrpd) {
-                    return true; // ✅ LAGER/URPD sheetovi su uvijek naši
-                }
-
-                // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
-                const isDirectWeightDbArticle = code &&
-                                               typeof window.weightDatabase !== 'undefined' &&
-                                               window.weightDatabase.has(code) &&
-                                               lowerSource.includes('weight database');
-
-                return isDirectWeightDbArticle;
-            }
+            // NOTE: isTrulyOurArticle() is centrally defined in utils.js and exported as window.isTrulyOurArticle
 
             // Count weight database usage
             const weightDbUsage = allArticles.filter(article => {
-                const isOur = isTrulyOurArticle(article.source, article.code);
+                const isOur = window.isTrulyOurArticle(article.source, article.code);
                 return isOur && weightDatabase && weightDatabase.has(article.code);
             }).length;
             
@@ -636,6 +617,107 @@ function initializeUIEventListeners() {
     // console.log('📄 CSV Google Sheets export fix applied');
 }
 
+/**
+ * Scrolls to results group for specific RB
+ * Used by link icon in troškovnik table
+ */
+function scrollToResultsForRB(rb) {
+    // Switch to Results tab
+    showTab('results');
+
+    // Wait for tab to load, then scroll to group
+    setTimeout(() => {
+        const groupId = 'group-' + rb;
+        const groupElement = document.getElementById(groupId);
+
+        if (!groupElement) {
+            console.warn(`⚠️ Group ${rb} not found in results`);
+            showMessage('warning', `Grupa RB ${rb} nije pronađena u rezultatima.`);
+            return;
+        }
+
+        // Expand group if collapsed
+        const contentElement = document.getElementById(groupId + '-content');
+        if (contentElement && contentElement.style.display === 'none') {
+            contentElement.style.display = 'block';
+            localStorage.setItem(groupId + '-collapsed', 'false');
+
+            // Update button icon
+            const buttons = groupElement.querySelectorAll('button[onclick*="toggleGroup"]');
+            buttons.forEach(btn => btn.textContent = '🔽');
+        }
+
+        // Smooth scroll to group
+        groupElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+        });
+
+        // Add highlight animation
+        groupElement.style.transition = 'background-color 0.6s ease';
+        groupElement.style.backgroundColor = '#fef3c7'; // Yellow highlight
+
+        setTimeout(() => {
+            groupElement.style.backgroundColor = ''; // Fade back to original
+        }, 1500);
+
+        console.log(`✅ Scrolled to RB ${rb} in Results tab`);
+    }, 200);
+}
+
+/**
+ * Scrolls to troškovnik row for specific RB
+ * Used by button in results groups
+ */
+function scrollToTroskovnikForRB(rb) {
+    // Switch to Troškovnik tab
+    showTab('troskovnik');
+
+    // Wait for tab to load and render
+    setTimeout(() => {
+        // Find troskovnik item by RB
+        const troskovnikItem = window.troskovnik ? window.troskovnik.find(t => t.redni_broj == rb) : null;
+
+        if (!troskovnikItem) {
+            console.warn(`⚠️ RB ${rb} not found in troškovnik`);
+            showMessage('warning', `Stavka RB ${rb} nije pronađena u troškovniku.`);
+            return;
+        }
+
+        // Find the table row by data-rb attribute (more reliable)
+        const tbody = document.getElementById('troskovnikTableBody');
+        if (!tbody) {
+            console.warn('⚠️ Troškovnik table body not found');
+            return;
+        }
+
+        // Find row using data-rb attribute
+        const targetRow = tbody.querySelector(`tr[data-rb="${rb}"]`);
+
+        if (!targetRow) {
+            console.warn(`⚠️ Row for RB ${rb} not found in table`);
+            return;
+        }
+
+        // Smooth scroll to row
+        targetRow.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center'
+        });
+
+        // Add highlight animation
+        targetRow.style.transition = 'background-color 0.6s ease';
+        const originalBackground = targetRow.style.backgroundColor;
+        targetRow.style.backgroundColor = '#fef3c7'; // Yellow highlight
+
+        setTimeout(() => {
+            targetRow.style.backgroundColor = originalBackground; // Fade back to original
+        }, 1500);
+
+        console.log(`✅ Scrolled to RB ${rb} in Troškovnik tab`);
+    }, 300); // Increased timeout to ensure table is rendered
+}
+
 // Export functions globally
 window.showTab = showTab;
 window.handleDragOver = handleDragOver;
@@ -649,5 +731,7 @@ window.initializeUIEventListeners = initializeUIEventListeners;
 window.handleWeightUpload = handleWeightUpload;
 window.handleWeightDrop = handleWeightDrop;
 window.updateWeightDatabaseDisplay = updateWeightDatabaseDisplay;
+window.scrollToResultsForRB = scrollToResultsForRB;
+window.scrollToTroskovnikForRB = scrollToTroskovnikForRB;
 
 // console.log('✅ UI module updated with PROPER CSV parser that handles quotes correctly');

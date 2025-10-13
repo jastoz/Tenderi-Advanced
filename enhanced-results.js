@@ -3,43 +3,8 @@
  * Handles results display with direct price input for LAGER/URPD articles
  */
 
-/**
- * Checks if article is "our article" (LAGER or URPD source)
- * OLD LOGIC: Only checks source
- * @param {string} source - Article source
- * @returns {boolean} True if our article
- */
-function isOurArticle(source) {
-    if (!source) return false;
-    const lowerSource = source.toLowerCase();
-    return lowerSource.includes('lager') || lowerSource.includes('urpd');
-}
-
-/**
- * NEW: Enhanced function to determine if article is truly "ours"
- * @param {string} source - Article source
- * @param {string} code - Article code (optional)
- * @returns {boolean} True if truly our article
- */
-function isTrulyOurArticle(source, code) {
-    if (!source) return false;
-
-    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
-    const lowerSource = source.toLowerCase();
-    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
-
-    if (isLagerOrUrpd) {
-        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
-    }
-
-    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
-    const isDirectWeightDbArticle = code &&
-                                   typeof window.weightDatabase !== 'undefined' &&
-                                   window.weightDatabase.has(code) &&
-                                   lowerSource.includes('weight database');
-
-    return isDirectWeightDbArticle;
-}
+// NOTE: Article classification is centrally defined in utils.js
+// Use window.isTrulyOurArticle(source, code) for all article type checks
 
 /**
  * Validates price input
@@ -172,6 +137,9 @@ function calculateTotalPurchasingValue(groupedResults) {
  * Updates the results display with enhanced price input functionality
  */
 function updateResultsDisplay() {
+    // DEBUG: Track display refresh calls for troubleshooting state loading issues
+    console.log('🔄 updateResultsDisplay() called - results:', results?.length || 0);
+
     const container = document.getElementById('resultsContainer');
     const exportBtn = document.getElementById('exportBtn');
 
@@ -212,7 +180,9 @@ function updateResultsDisplay() {
 
         const selectedCount = selectedResults.size;
         const totalPurchasingValue = calculateTotalPurchasingValue(groupedResults);
-        const ourArticlesCount = results.filter(item => isTrulyOurArticle(item.source, item.code)).length;
+
+        // VIZUALNI PRIKAZ: Broji LAGER/URPD artikle za prikaz
+        const ourArticlesCount = results.filter(item => window.isOurArticleVisual(item.source)).length;
         const withUserPricesCount = results.filter(item => item.hasUserPrice).length;
         // Sort groups: PENDING first, then numeric order
         const sortedGroupOrder = Object.keys(groupedResults).sort((a, b) => {
@@ -271,13 +241,18 @@ function updateResultsDisplay() {
             const troskovnikName = isPendingGroup ? "" : getTroskovnikNameForRB(rb);
             const troskovnikQuantity = troskovnikItem ? troskovnikItem.trazena_kolicina || 1 : 1;
             const lowestPrice = getLowestPriceInGroup(groupItems);
-            const ourArticlesInGroup = groupItems.filter(item => isTrulyOurArticle(item.source, item.code)).length;
+
+            // VIZUALNI PRIKAZ: Broji LAGER/URPD artikle u grupi
+            const ourArticlesInGroup = groupItems.filter(item => window.isOurArticleVisual(item.source)).length;
             const withPricesInGroup = groupItems.filter(item => item.hasUserPrice).length;
             
+            // Sort: Prvi izbor na vrh, ostali po ID-u (redoslijed dodavanja)
             const sortedItems = groupItems.sort((a, b) => {
-                const priceA = a.hasUserPrice ? a.pricePerKg : (a.pricePerKg || 0);
-                const priceB = b.hasUserPrice ? b.pricePerKg : (b.pricePerKg || 0);
-                return priceA - priceB;
+                // Prvi izbor uvijek na vrh
+                if (a.isFirstChoice && !b.isFirstChoice) return -1;
+                if (!a.isFirstChoice && b.isFirstChoice) return 1;
+                // Ostali po ID-u (redoslijed dodavanja)
+                return a.id - b.id;
             });
             
             const groupId = 'group-' + rb;
@@ -325,8 +300,10 @@ function updateResultsDisplay() {
                 '<div style="font-size: 13px; color: #7c3aed; font-weight: 700; font-family: inherit; line-height: 1.0;">Nabavna: €' + groupPurchasingValue.toFixed(2) + '</div>' +
                 '<div style="font-size: 16px; color: #059669; font-weight: 800; font-family: inherit; line-height: 1.0;">UDIO: ' + groupShare.toFixed(1) + '%</div>' +
                 '<div style="font-size: 11px; color: #6b7280; font-family: inherit; line-height: 1.0; font-weight: 500;">' + troskovnikQuantity + ' × €' + lowestPrice.toFixed(2) + '</div>' +
+                '<div style="display: flex; gap: 3px; justify-content: flex-end;">' +
+                '<button class="btn btn-success" onclick="scrollToTroskovnikForRB(' + rb + ')" style="padding: 1px 6px; font-size: 11px; font-family: inherit; line-height: 1.0; background: #059669; color: white;" title="Idi na troškovnik RB ' + rb + '">📋 Trošk.</button>' +
                 '<button class="btn btn-purple" onclick="clearGroup(' + rb + ')" style="padding: 1px 3px; font-size: 11px; font-family: inherit; line-height: 1.0;" title="Obriši cijelu grupu">🗑️</button>' +
-                '</div></div>' +
+                '</div></div></div>' +
                 '<div id="' + groupId + '-content" style="display: ' + (isCollapsed ? 'none' : 'block') + ';">';
             }
             
@@ -334,14 +311,13 @@ function updateResultsDisplay() {
             html +=
                 '<div class="table-container"><table class="table" style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 16px; border-spacing: 0; border-collapse: separate; width: 100%;"><thead><tr style="background: #f8fafc;">' +
                 '<th style="width: 30px; padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9;">✓</th>' +
-                '<th style="width: 35px; padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9;">Rang</th>' +
                 '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 80px;">Šifra</th>' +
                 '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 200px;">Naziv</th>' +
                 '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 40px;">J.M.</th>' +
                 '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 70px;">VPC</th>' +
                 '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 80px;">VPC/kg</th>' +
                 '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 90px;">€/kom</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 90px;">€/kg</th>' +
+                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 90px; color: #6b7280;">€/kg<br><small style="font-size: 10px; font-weight: 400;">(auto)</small></th>' +
                 '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 100px;">Dobavljač</th>' +
                 '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 60px;">Težina</th>' +
                 '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 70px;">Lani</th>' +
@@ -354,7 +330,9 @@ function updateResultsDisplay() {
             sortedItems.forEach((item, index) => {
                 const resultKey = item.id + '-' + item.rb;
                 const isSelected = selectedResults.has(resultKey);
-                const isOurArticle = isTrulyOurArticle(item.source, item.code);
+
+                // VIZUALNI PRIKAZ: Koristi isOurArticleVisual() za zeleno/ljubičasto
+                const isOurArticle = window.isOurArticleVisual(item.source);
 
                 let formattedDate = 'N/A';
                 try {
@@ -398,9 +376,10 @@ function updateResultsDisplay() {
                 const originalPricePerKg = calculatedWeight > 0 ? price / calculatedWeight : 0;
                 const userPricePerPiece = item.pricePerPiece || 0;
                 const userPricePerKg = item.pricePerKg || originalPricePerKg;
-                
-                // Get last year's price for reference
-                const lastYearPrice = window.getProslogodisnjaCijena ? window.getProslogodisnjaCijena(item.code) : null;
+
+                // ✅ Get last year's price ONLY for "NAŠ" articles (to prevent mixing with external articles)
+                const lastYearPrice = (isOurArticle && window.getProslogodisnjaCijena) ?
+                    window.getProslogodisnjaCijena(item.code) : null;
                 
                 const pieceValidation = validatePrice(userPricePerPiece);
                 const kgValidation = validatePrice(userPricePerKg);
@@ -409,24 +388,20 @@ function updateResultsDisplay() {
                 const kgClass = isOurArticle ? (kgValidation === 'valid' ? 'price-input valid' : 
                                         kgValidation === 'invalid' ? 'price-input invalid' : 'price-input') : '';
                 
-                const isLowestPrice = Math.abs(price - lowestPrice) < 0.01;
-                const priceStyle = isLowestPrice ? 'background: #fef3c7; color: #92400e; font-weight: 700; padding: 2px 4px; border-radius: 3px; font-size: 15px;' : 'font-size: 15px; font-weight: 600;';
-                
-                let rankBadge = '';
-                if (index === 0) {
-                    rankBadge = '<span style="background: #fbbf24; color: #92400e; padding: 1px 3px; border-radius: 6px; font-size: 11px; font-weight: 700; line-height: 0.9;">🥇1</span>';
-                } else if (index === 1) {
-                    rankBadge = '<span style="background: #e5e7eb; color: #374151; padding: 1px 3px; border-radius: 6px; font-size: 11px; font-weight: 700; line-height: 0.9;">🥈2</span>';
-                } else if (index === 2) {
-                    rankBadge = '<span style="background: #fcd34d; color: #92400e; padding: 1px 3px; border-radius: 6px; font-size: 11px; font-weight: 700; line-height: 0.9;">🥉3</span>';
-                } else {
-                    rankBadge = '<span style="background: #f3f4f6; color: #6b7280; padding: 1px 3px; border-radius: 6px; font-size: 11px; line-height: 0.9;">' + (index + 1) + '</span>';
-                }
-                
+                // Removed: lowest price highlighting and rank badges
+                const priceStyle = 'font-size: 15px; font-weight: 600;';
+
+                // First choice indicator - pokazuje se pored šifre
+                const firstChoiceIndicator = item.isFirstChoice === true ?
+                    '<span style="background: #059669; color: white; padding: 2px 6px; border-radius: 6px; font-size: 14px; margin-right: 6px; display: inline-block;">⭐</span>' :
+                    '';
+
                 html += '<tr style="' + rowStyle + '" class="result-row">' +
-                    '<td style="padding: 1px; text-align: center; vertical-align: middle;"><input type="checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleResult(\'' + resultKey + '\')" style="transform: scale(1.4); cursor: pointer;"></td>' +
-                    '<td style="padding: 1px; text-align: center; vertical-align: middle;">' + rankBadge + '</td>' +
-                    '<td style="padding: 1px; font-weight: 700; font-size: 15px; line-height: 0.9; vertical-align: middle;">' + (item.code || '') + '</td>' +
+                    '<td style="padding: 1px; text-align: center; vertical-align: middle;">' +
+                    '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleResult(\'' + resultKey + '\')" style="transform: scale(1.4); cursor: pointer;">' +
+                    '</td>' +
+                    '<td style="padding: 1px; font-weight: 700; font-size: 15px; line-height: 0.9; vertical-align: middle;">' +
+                    firstChoiceIndicator + (item.code || '') + '</td>' +
                     '<td style="padding: 1px; max-width: 200px; font-size: 15px; line-height: 0.9; vertical-align: middle;" title="' + (item.name || '') + '">' + (item.name || '') + '</td>' +
                     '<td style="padding: 1px; text-align: center; font-size: 14px; line-height: 0.9; vertical-align: middle;">' + (item.unit || '') + '</td>' +
                     '<td style="padding: 1px; text-align: right; vertical-align: middle;"><span style="' + priceStyle + '">€' + price.toFixed(2) + '</span></td>' +
@@ -440,12 +415,9 @@ function updateResultsDisplay() {
                         'onchange="updateResultPrice(\'' + resultKey + '\', \'pricePerPiece\', this.value)" onfocus="this.select()" placeholder="0.00" title="Unesite izlaznu cijenu po komadu" ' +
                         'style="width: 80px; padding: 1px; border: 2px solid #16a34a; background: #ecfdf5; color: #16a34a; border-radius: 3px; font-size: 14px; line-height: 0.9; font-weight: 700;">' +
                         '<div class="price-sync-indicator" style="font-size: 10px; color: #16a34a; line-height: 0.8; font-weight: 600;">' + (item.hasUserPrice && item.userPriceType === 'pricePerPiece' ? '✓' : '↻') + '</div></div></td>' +
-                        '<td style="padding: 1px; vertical-align: middle;"><div class="price-input-group">' +
-                        '<div class="price-input-label" style="font-size: 12px; color: #16a34a; line-height: 0.8; font-weight: 700;">€/kg</div>' +
-                        '<input type="number" step="0.01" value="' + userPricePerKg.toFixed(2) + '" class="' + kgClass + '" ' +
-                        'onchange="updateResultPrice(\'' + resultKey + '\', \'pricePerKg\', this.value)" onfocus="this.select()" placeholder="0.00" title="Unesite izlaznu cijenu po kilogramu" ' +
-                        'style="width: 80px; padding: 1px; border: 2px solid #16a34a; background: #ecfdf5; color: #16a34a; border-radius: 3px; font-size: 14px; line-height: 0.9; font-weight: 700;">' +
-                        '<div class="price-sync-indicator" style="font-size: 10px; color: #16a34a; line-height: 0.8; font-weight: 600;">' + (item.hasUserPrice && item.userPriceType === 'pricePerKg' ? '✓' : '↻') + '</div></div></td>';
+                        '<td style="padding: 1px; text-align: center; vertical-align: middle;">' +
+                        '<div style="color: #059669; font-weight: 700; font-size: 14px; line-height: 0.9;">€' + userPricePerKg.toFixed(2) + '/kg</div>' +
+                        '<div style="font-size: 10px; color: #6b7280; line-height: 0.8;">Auto</div></td>';
                 } else {
                     html += item.hasUserPrice ?
                         '<td style="padding: 1px; text-align: center; vertical-align: middle;"><div style="color: #7c3aed; font-weight: 700; font-size: 15px; line-height: 0.9;">€' + userPricePerPiece.toFixed(2) + '</div></td>' +
@@ -525,8 +497,9 @@ function updateResultsDisplay() {
                         '<div style="color: #16a34a; font-size: 13px; font-weight: 700; line-height: 0.9;">' + pdvValue + '</div>' +
                         '<div style="font-size: 11px; color: #16a34a; line-height: 0.8;">' + pdvDisplay + '</div></td>';
                 }
-                
-                const isOur = isTrulyOurArticle(item.source, item.code);
+
+                // VIZUALNI PRIKAZ: Koristi isOurArticleVisual() za badge
+                const isOur = window.isOurArticleVisual(item.source);
                 const badgeClass = getBadgeClass(item.source);
 
                 html += '<td style="padding: 1px; font-size: 13px; text-align: center; line-height: 0.9; vertical-align: middle;">' + formattedDate + '</td>' +
@@ -684,7 +657,7 @@ function updateCustomArticlePDV(resultKey, newPdvStopa) {
     const result = results.find(r => r.id == id && r.rb == rb);
     
     // Allow PDV changes for external articles OR manual entries
-    if (result && (!isTrulyOurArticle(result.source, result.code) || result.isManualEntry)) {
+    if (result && (!window.isTrulyOurArticle(result.source, result.code) || result.isManualEntry)) {
         result.customPdvStopa = parseInt(newPdvStopa) || 25;
         
         // Show success message
@@ -888,7 +861,7 @@ function exportResults() {
             calculatedWeight.toFixed(3),
             item.date || '',
             item.source || '',
-                            isTrulyOurArticle(item.source, item.code) ? 'Da' : 'Ne',
+                            window.isTrulyOurArticle(item.source, item.code) ? 'Da' : 'Ne',
             item.hasUserPrice ? 'Da' : 'Ne'
         ];
     });
@@ -1001,7 +974,7 @@ function reclassifyResultsAfterStateLoad() {
         if (result.source) {
             // Re-evaluate classification using current isTrulyOurArticle logic
             const wasOur = result.isOurArticle || false;
-            const isNowOur = isTrulyOurArticle(result.source, result.code);
+            const isNowOur = window.isTrulyOurArticle(result.source, result.code);
 
             // IMPROVED: ALWAYS update the flag (not just when changed)
             result.isOurArticle = isNowOur;
@@ -1025,11 +998,10 @@ function reclassifyResultsAfterStateLoad() {
     console.log(`   - 🏠 NAŠ (LAGER/URPD): ${lagerUrpdCount}`);
     console.log(`   - 📋 PO CJENIKU (external): ${externalCount}`);
 
-    // Force refresh display to show new colors
-    if (typeof updateResultsDisplay === 'function') {
-        updateResultsDisplay();
-        console.log('✅ Results display refreshed with new classifications');
-    }
+    // NOTE: Display refresh removed from here
+    // The state-manager.js will call updateResultsDisplay() after all databases are ready (with 100ms delay)
+    // This prevents premature display before weightDatabase/pdvDatabase are fully loaded
+    console.log('⏳ Display refresh will be triggered by state-manager after all databases are ready');
 }
 
 window.reclassifyResultsAfterStateLoad = reclassifyResultsAfterStateLoad;

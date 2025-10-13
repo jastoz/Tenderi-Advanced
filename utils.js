@@ -411,6 +411,7 @@ function getBadgeClass(source) {
     const lowerSource = source.toLowerCase();
     if (lowerSource.includes('lager')) return 'badge-green';
     if (lowerSource.includes('urpd')) return 'badge-green'; // FIXED: URPD is also "our article" - green badge
+    if (lowerSource.includes('weight_database') || lowerSource.includes('weight database')) return 'badge-green'; // FIXED: Weight Database is also "our article" - green badge
     return 'badge-purple'; // FIXED: Vanjski artikli su ljubičasti, ne plavi
 }
 
@@ -471,41 +472,55 @@ function parseSourceName(source) {
 }
 
 /**
- * ENHANCED: Checks if article is "our article" (LAGER or URPD source)
- * OLD LOGIC: Only checks source
- * @param {string} source - Article source
- * @returns {boolean} True if our article
+ * VIZUALNI PRIKAZ: Provjerava da li je artikl "naš" (LAGER/URPD/WEIGHT_DATABASE) za boje i badge-ove
+ * - ZELENO (NAŠ): Excel sheetovi sa "lager", "urpd" ili "weight_database" u nazivu
+ * - LJUBIČASTO (PO CJENIKU): Svi ostali Excel sheetovi
+ *
+ * @param {string} source - Article source (ime Excel sheeta)
+ * @returns {boolean} True ako je LAGER/URPD/WEIGHT_DATABASE (za zelenu boju)
  */
-function isOurArticle(source) {
+function isOurArticleVisual(source) {
     if (!source) return false;
     const lowerSource = source.toLowerCase();
-    return lowerSource.includes('lager') || lowerSource.includes('urpd');
+    return lowerSource.includes('lager') ||
+           lowerSource.includes('urpd') ||
+           lowerSource.includes('weight_database') ||
+           lowerSource.includes('weight database');
 }
 
 /**
- * NEW: Enhanced function to determine if article is truly "ours"
+ * LEGACY: Stara funkcija - koristi isOurArticleVisual()
+ * @deprecated Koristiti isOurArticleVisual() umjesto ovoga
+ */
+function isOurArticle(source) {
+    return isOurArticleVisual(source);
+}
+
+/**
+ * TABLICA RABATA: Provjerava da li artikl ide u tablicu rabata
+ * - IDE u tablicu rabata: Samo "NAŠ" artikli (LAGER/URPD/WEIGHT_DATABASE)
+ * - NE ide u tablicu rabata: Ručni unos i vanjski "PO CJENIKU" artikli
+ *
  * @param {string} source - Article source
- * @param {string} code - Article code (optional)
- * @returns {boolean} True if truly our article
+ * @param {string} code - Article code/šifra (not used anymore - check by source only)
+ * @returns {boolean} True ako ide u tablicu rabata
+ */
+function shouldIncludeInTablicaRabata(source, code) {
+    // SKIP ručni unos (nema pravu šifru za robni program)
+    if (source === 'MANUAL_ENTRY') return false;
+
+    // ✅ ISPRAVNO: Samo naši artikli (LAGER/URPD/WEIGHT_DATABASE)
+    // Ova provjera sprječava da vanjski artikli sa slučajno istom šifrom uđu u tablicu
+    return isOurArticleVisual(source);
+}
+
+/**
+ * BACKWARDS COMPATIBILITY: Wrapper funkcija za vizualni prikaz
+ * @deprecated Koristiti isOurArticleVisual() za boje ili shouldIncludeInTablicaRabata() za tablicu
  */
 function isTrulyOurArticle(source, code) {
-    if (!source) return false;
-
-    // PRIORITET 1: LAGER ili URPD source = automatski naš artikl (bez weightDatabase provjere)
-    const lowerSource = source.toLowerCase();
-    const isLagerOrUrpd = lowerSource.includes('lager') || lowerSource.includes('urpd');
-
-    if (isLagerOrUrpd) {
-        return true; // ✅ LAGER/URPD sheetovi su uvijek naši
-    }
-
-    // PRIORITET 2: Direktni Weight Database artikli (ako nisu iz LAGER/URPD)
-    const isDirectWeightDbArticle = code &&
-                                   typeof window.weightDatabase !== 'undefined' &&
-                                   window.weightDatabase.has(code) &&
-                                   lowerSource.includes('weight database');
-
-    return isDirectWeightDbArticle;
+    // Za backwards compatibility i vizualni prikaz - provjerava LAGER/URPD
+    return isOurArticleVisual(source);
 }
 
 /**
@@ -827,7 +842,9 @@ window.getSourceColor = getSourceColor;
 window.getBadgeClass = getBadgeClass;
 window.parseSourceName = parseSourceName;
 window.isOurArticle = isOurArticle;
-window.isTrulyOurArticle = isTrulyOurArticle; // ADDED: Export enhanced article detection
+window.isOurArticleVisual = isOurArticleVisual; // NEW: Za vizualni prikaz (boje/badge)
+window.shouldIncludeInTablicaRabata = shouldIncludeInTablicaRabata; // NEW: Za logiku tablice rabata
+window.isTrulyOurArticle = isTrulyOurArticle; // BACKWARDS COMPATIBILITY: Wrapper za isOurArticleVisual
 window.validatePrice = validatePrice;
 window.formatPrice = formatPrice;
 window.calculatePricePerKg = calculatePricePerKg;
