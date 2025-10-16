@@ -58,8 +58,15 @@ npm run test:headed        # Run tests with browser UI visible
 npm run test:ui            # Run tests with Playwright UI for debugging
 ```
 
+### Deployment
+```bash
+# Vercel deployment
+npm run vercel-build        # Prepare for Vercel deployment (no actual build needed)
+# Vercel configuration in vercel.json
+```
+
 ### No Build Process
-This application runs directly in the browser without compilation, transpilation, or bundling.
+This application runs directly in the browser without compilation, transpilation, or bundling. All JavaScript files are loaded as ES6 modules directly in the browser.
 
 ## Testing Infrastructure
 
@@ -102,11 +109,26 @@ The application integrates with Google Apps Script for weight data management:
 ### Article Data Structure
 ```javascript
 {
-    sifra: string,      // Article code
+    sifra: string,      // Article code (šifra)
     naziv: string,      // Article name
-    jm: string,         // Unit of measure
+    jm: string,         // Unit of measure (jedinica mjere)
     source: string,     // Data source (LAGER, URPD, or external)
     dobavljac: string   // Supplier name
+}
+```
+
+### Results Data Structure
+```javascript
+{
+    code: string,           // Article code
+    name: string,           // Article name
+    source: string,         // Source (determines "our" vs "external")
+    dobavljac: string,      // Supplier
+    hasUserPrice: boolean,  // User entered price directly
+    pricePerPiece: number,  // User-entered price (if any)
+    weight: number,         // Weight in kg
+    isFromWeightDatabase: boolean,  // Weight from Google Sheets vs parsed
+    rb: number             // Row number in results table
 }
 ```
 
@@ -115,11 +137,13 @@ The application integrates with Google Apps Script for weight data management:
 - Keys: article codes (šifra)
 - Values: weight in kilograms
 - Includes PDV (VAT) mapping via tarifni broj
+- Synchronized with Google Sheets in real-time
 
 ### State Management
 - Application state serialized to JSON
 - Includes: articles, results, troskovnik, weights, settings
 - Quick save (Ctrl+S) and full save (Ctrl+Shift+S) available
+- State files use `.json` extension
 
 ## Key Workflows
 
@@ -198,6 +222,7 @@ Automatic PDV calculation based on tarifni broj:
 - `Enter` in autocomplete - Add article with price
 - `Tab` in autocomplete - Navigate between price/weight fields
 - `Escape` - Clear search / close autocomplete
+- `1-6` - Quick tab switching (1=Search, 2=Results, 3=Troškovnik, 4=Tablica Rabata, 5=Prošlogodišnje Cijene, 6=Save/Load)
 
 ### Data Management
 - `Ctrl+S` - Quick save state
@@ -211,6 +236,7 @@ Automatic PDV calculation based on tarifni broj:
 
 ### Enhanced Article Management (`enhanced-functions.js`)
 - `isTrulyOurArticle(source, code)` - Determines if article is truly "ours" (source contains LAGER or URPD, weight database NOT required)
+- `shouldIncludeInTablicaRabata(source, code)` - Logic for tablica rabata inclusion (same as isTrulyOurArticle for now)
 - `generateFromResults()` - **MAIN FUNCTION**: Generates tablica rabata from search results with user prices
 - `addWithPriceFromAutocomplete()` - Handles direct price input workflow
 - `addWithoutPriceFromAutocomplete()` - Adds articles without price (green checkmark)
@@ -221,11 +247,98 @@ Automatic PDV calculation based on tarifni broj:
 - `handleProslogodisnjeCijeneSearch()` - Filters historical data
 - `parseXMLContent(xmlDoc)` - Supports multiple XML formats for price import
 
+### Weight Management (`weight-manager.js`)
+- `getArticleWeightAndPDV(code, name, jm, source)` - Get weight and PDV data for an article
+- `updateWeightValue(code, newWeight)` - Update weight in database and sync to Google Sheets
+- `importFromGoogleSheets()` - Load weight database from Google Sheets
+- `exportWeightsToGoogleSheets()` - Export all weights to Google Sheets
+
+### Utility Functions (`utils.js`)
+- `parseWeightFromName(name)` - Extract weight from article name (e.g., "Ajvar 720g" → 0.72)
+- `formatWeight(weight)` - Format weight for display
+- `formatPrice(price)` - Format price with 2 decimals
+- `showMessage(type, message, statusElementId)` - Display user messages (info/success/error)
+
 ### Enhanced Workflow
 1. **Direct Price Input**: User enters price directly in autocomplete
 2. **One-Step Tablica Rabata**: Generate discount table from results with `generateFromResults()`
 3. **Historical Comparison**: Compare current prices with imported historical data
 4. **Auto-sync**: Real-time sync with Google Sheets for weight updates
+
+## Global Variables and State
+
+All major data is stored in global window variables for easy access:
+
+### Core Data Arrays
+- `window.articles` - Array of all loaded articles (from CSV/Excel)
+- `window.results` - Array of search results with user-entered prices
+- `window.troskovnik` - Array of items in cost calculation table
+- `window.tablicaRabata` - Array of items in discount table
+
+### Database Maps
+- `window.weightDatabase` - Map of article codes to weights (key: šifra, value: weight in kg)
+- `window.pdvDatabase` - Map of article codes to PDV percentages
+- `window.tarifniBrojDatabase` - Map of article codes to tarifni broj
+
+### Utility Objects
+- `window.Logger` - Logging utility with different levels (DEBUG, INFO, WARN, ERROR)
+- `window.WeightManager` - Weight management instance for Google Sheets integration
+
+### Debugging
+The application includes comprehensive logging via the Logger module:
+```javascript
+// Enable debug logging in browser console
+Logger.setLevel(Logger.LEVELS.DEBUG);
+
+// Check current state
+console.log('Articles:', window.articles.length);
+console.log('Results:', window.results);
+console.log('Weight DB:', window.weightDatabase.size);
+```
+
+## Common Development Patterns
+
+### Adding a New Tab
+1. Add tab button in `index.html` (in `.tabs` container)
+2. Add tab content div (in `.container`)
+3. Update `showTab()` function in `ui.js` to handle the new tab
+4. Add keyboard shortcut number if desired
+
+### Processing File Uploads
+Files are handled using the SheetJS library for Excel and standard FileReader for CSV:
+```javascript
+function processFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, {type: 'array'});
+        // Process workbook...
+    };
+    reader.readAsArrayBuffer(file);
+}
+```
+
+### Updating Display Tables
+All display update functions follow a pattern:
+1. Clear existing table rows
+2. Iterate through data array
+3. Create table rows with event listeners
+4. Update status messages
+
+Example: `updateResultsDisplay()`, `updateTroskovnikDisplay()`, `updateTablicaRabataDisplay()`
+
+### Article Classification Logic
+Critical for understanding "our" vs "external" articles:
+- **"Our articles"**: Source contains "LAGER" or "URPD" (case-insensitive)
+- **Weight database is NOT required** for classification
+- Use `isTrulyOurArticle(source, code)` from utils.js for consistency
+- Green color scheme for "our", purple for "external"
+
+### Google Sheets Synchronization
+- Weight updates are bidirectional (app ↔ Google Sheets)
+- Other fields (naziv, dobavljač, etc.) are read-only from Sheets
+- Always use `updateWeightValue()` to update weights (handles sync automatically)
+- Falls back to local storage if Google Sheets unavailable
 
 ## Browser Compatibility
 

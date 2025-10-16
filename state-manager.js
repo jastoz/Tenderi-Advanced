@@ -56,7 +56,10 @@ function serializeAppState() {
         
         // Selected items
         selectedResults: (typeof selectedResults !== 'undefined') ? Array.from(selectedResults) : [],
-        
+
+        // NOVO: Selected groups for Popratiti tracking
+        selectedGroups: (typeof window.selectedGroups !== 'undefined') ? Array.from(window.selectedGroups) : [],
+
         // Current tab state
         currentTab: currentTab,
         
@@ -202,7 +205,10 @@ function serializeMinimalState() {
         
         // 🆕 NEW: Referenced articles for continued search functionality
         referencedArticles: referencedArticles,
-        
+
+        // NOVO: Selected groups for Popratiti tracking
+        selectedGroups: (typeof window.selectedGroups !== 'undefined') ? Array.from(window.selectedGroups) : [],
+
         // OPTIMIZED: Efficient Map → Array conversion with filtering
         finalWeightDatabase: (typeof weightDatabase !== 'undefined') ? 
             Array.from(weightDatabase.entries())
@@ -507,6 +513,15 @@ function deserializeAppState(state) {
                 // console.log('✅ Restored selected results:', selectedResults.size);
             }
         }
+
+        // NOVO: Restore selected groups for Popratiti tracking
+        if (typeof window.selectedGroups !== 'undefined') {
+            window.selectedGroups.clear();
+            if (state.selectedGroups && Array.isArray(state.selectedGroups)) {
+                state.selectedGroups.forEach(rb => window.selectedGroups.add(rb));
+                console.log('✅ Restored selected groups for Popratiti:', window.selectedGroups.size);
+            }
+        }
         
         // Restore UI input values
         if (state.globalSearchInput) {
@@ -760,6 +775,7 @@ function clearAllData() {
     if (typeof window.proslogodisnjeCijene !== 'undefined') window.proslogodisnjeCijene.length = 0;
     if (typeof window.filteredProslogodisnjeCijene !== 'undefined') window.filteredProslogodisnjeCijene.length = 0;
     if (typeof selectedResults !== 'undefined') selectedResults.clear();
+    if (typeof window.selectedGroups !== 'undefined') window.selectedGroups.clear();
     
     // 🆕 NEW: Clear kupci data safely
     if (typeof window.kupciDatabase !== 'undefined') window.kupciDatabase.clear();

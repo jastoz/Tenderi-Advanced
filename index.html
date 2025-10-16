@@ -1847,7 +1847,7 @@
                     showMessage('warning', '⚠️ Troškovnik prazan - preskočen');
                 }
                 
-                // 3. Add tablica rabata XML file  
+                // 3. Add tablica rabata XML file
                 if (window.tablicaRabata && tablicaRabata.length > 0) {
                     try {
                         const rabataXML = generateTablicaRabataXML();
@@ -1863,7 +1863,24 @@
                 } else {
                     showMessage('warning', '⚠️ Tablica rabata prazna - preskočena');
                 }
-                
+
+                // 4. NOVO: Add Popratiti Excel file (if groups are selected)
+                if (window.selectedGroups && window.selectedGroups.size > 0) {
+                    try {
+                        const popratuBlob = exportPopratuToExcel(true); // true = return as Blob
+                        if (popratuBlob) {
+                            const popratuFilename = generateTenderFilenames('Popratiti', 'xlsx');
+                            zip.file(popratuFilename.internalName, popratuBlob);
+                            showMessage('info', `✅ Popratiti dodan (${window.selectedGroups.size} grupa)`, 'generalStatus');
+                        }
+                    } catch (error) {
+                        console.error('Error creating popratiti Excel:', error);
+                        showMessage('warning', '⚠️ Popratiti preskočen (greška)');
+                    }
+                } else {
+                    showMessage('info', 'ℹ️ Nema označenih grupa za Popratiti - preskočen');
+                }
+
                 // Generate and download ZIP
                 showMessage('info', '📦 Generiranje ZIP datoteke...', 'generalStatus');
                 const zipBlob = await zip.generateAsync({type: 'blob'});

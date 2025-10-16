@@ -6,6 +6,11 @@
 // NOTE: Article classification is centrally defined in utils.js
 // Use window.isTrulyOurArticle(source, code) for all article type checks
 
+// NOVO: Selected groups for "Popratiti" export (tender follow-up tracking)
+if (typeof window.selectedGroups === 'undefined') {
+    window.selectedGroups = new Set();
+}
+
 /**
  * Validates price input
  * @param {number} price - Price to validate
@@ -144,7 +149,29 @@ function updateResultsDisplay() {
     const exportBtn = document.getElementById('exportBtn');
 
     try {
-        if (results.length === 0) {
+        // NEW: Merge RB from results AND troskovnik to show empty groups
+        const allRBs = new Set();
+
+        // Add RB from existing results
+        results.forEach(item => {
+            const rb = item.rb || "PENDING";
+            allRBs.add(rb);
+        });
+
+        // Add RB from troskovnik (creates empty groups)
+        if (typeof window.troskovnik !== 'undefined' && window.troskovnik && window.troskovnik.length > 0) {
+            window.troskovnik.forEach(item => {
+                if (item.redni_broj) {
+                    allRBs.add(item.redni_broj);
+                }
+            });
+        }
+
+        // Check if we have ANY groups (from results or troskovnik)
+        const hasAnyGroups = allRBs.size > 0;
+
+        if (!hasAnyGroups) {
+            // Completely empty - no results and no troskovnik
             container.innerHTML = '<div style="text-align: center; padding: 40px; color: #6b7280;">' +
                 '<div style="font-size: 48px; margin-bottom: 12px;">🔍</div>' +
                 '<h3>Nema rezultata</h3>' +
@@ -160,7 +187,7 @@ function updateResultsDisplay() {
                 '• <strong>📊 NOVO: VPC/kg kolona pokazuje nabavnu cijenu po kilogramu!</strong><br>' +
                 '• <strong>📄 Upload-ajte svoje podatke za početak rada!</strong>' +
                 '</div></div>';
-            
+
             if (exportBtn) exportBtn.style.display = 'none';
             if (typeof refreshTroskovnikColors === 'function') {
                 refreshTroskovnikColors();
@@ -170,8 +197,15 @@ function updateResultsDisplay() {
 
         if (exportBtn) exportBtn.style.display = 'block';
 
-        // Group results by RB
+        // Group results by RB (including empty groups from troskovnik)
         const groupedResults = {};
+
+        // Initialize all groups (including empty ones from troskovnik)
+        allRBs.forEach(rb => {
+            groupedResults[rb] = [];
+        });
+
+        // Fill groups with existing results
         results.forEach(item => {
             const rb = item.rb || "PENDING";
             if (!groupedResults[rb]) groupedResults[rb] = [];
@@ -210,16 +244,20 @@ function updateResultsDisplay() {
             '<div style="font-size: 12px; color: #059669; margin-top: 4px;">🎨 Troškovnik se automatski boji</div>' +
             '</div></div>' +
             '<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">' +
-            '<div style="display: flex; gap: 12px; align-items: center;">' +
-            '<label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">' +
-            '<input type="checkbox" ' + (selectedCount === results.length && results.length > 0 ? 'checked' : '') + ' onchange="toggleAllResults()" style="transform: scale(1.2);">' +
-            '<span>Odaberi sve</span></label>';
-            
+            '<div style="display: flex; gap: 12px; align-items: center;">';
+
         if (withUserPricesCount > 0) {
             html += '<button class="btn btn-success" onclick="generateTablicaFromResults()" style="padding: 8px 16px; font-size: 13px;">' +
                 '📊 Generiraj tablicu rabata (' + withUserPricesCount + ')</button>';
         }
-        
+
+        // NOVO: Add Popratiti export button if groups are selected
+        const selectedGroupsCount = window.selectedGroups.size;
+        if (selectedGroupsCount > 0) {
+            html += '<button class="btn btn-success" onclick="exportPopratuToExcel()" style="padding: 8px 16px; font-size: 13px; background: #16a34a; margin-left: 8px;">' +
+                '📋 Popratiti (' + selectedGroupsCount + ')</button>';
+        }
+
         html += '</div>' +
             '<div style="display: flex; gap: 8px; align-items: center;">' +
             '<button class="btn btn-purple" onclick="clearAllResults()" style="padding: 6px 12px; font-size: 12px;">🗑️ Obriši sve</button>' +
@@ -229,12 +267,15 @@ function updateResultsDisplay() {
 
         // Generate HTML for each group
         sortedGroupOrder.forEach(rb => {
-            const groupItems = groupedResults[rb];
-            if (!groupItems || groupItems.length === 0) return;
-            
+            const groupItems = groupedResults[rb] || [];
+
+            // NEW: Skip PENDING group if empty (no unclassified results)
             const isPendingGroup = rb === "PENDING";
+            if (isPendingGroup && groupItems.length === 0) return;
+
+            // NEW: For numbered groups, show even if empty (from troskovnik)
             const groupSelectedCount = groupItems.filter(item => selectedResults.has(item.id + '-' + item.rb)).length;
-            const allGroupSelected = groupSelectedCount === groupItems.length;
+            const allGroupSelected = groupItems.length > 0 && groupSelectedCount === groupItems.length;
             const groupPurchasingValue = isPendingGroup ? 0 : calculateGroupPurchasingValue(rb, groupItems);
             const groupShare = totalPurchasingValue > 0 ? (groupPurchasingValue / totalPurchasingValue * 100) : 0;
             const troskovnikItem = isPendingGroup ? null : getTroskovnikItemForRB(rb);
@@ -245,15 +286,15 @@ function updateResultsDisplay() {
             // VIZUALNI PRIKAZ: Broji LAGER/URPD artikle u grupi
             const ourArticlesInGroup = groupItems.filter(item => window.isOurArticleVisual(item.source)).length;
             const withPricesInGroup = groupItems.filter(item => item.hasUserPrice).length;
-            
-            // Sort: Prvi izbor na vrh, ostali po ID-u (redoslijed dodavanja)
-            const sortedItems = groupItems.sort((a, b) => {
+
+            // Sort: Prvi izbor na vrh, ostali po ID-u (redoslijed dodavanja) - samo ako ima stavki
+            const sortedItems = groupItems.length > 0 ? groupItems.sort((a, b) => {
                 // Prvi izbor uvijek na vrh
                 if (a.isFirstChoice && !b.isFirstChoice) return -1;
                 if (!a.isFirstChoice && b.isFirstChoice) return 1;
                 // Ostali po ID-u (redoslijed dodavanja)
                 return a.id - b.id;
-            });
+            }) : [];
             
             const groupId = 'group-' + rb;
             const isCollapsed = localStorage.getItem(groupId + '-collapsed') === 'true';
@@ -263,9 +304,7 @@ function updateResultsDisplay() {
                 html += '<div class="card" id="group-' + rb + '" style="margin-bottom: 8px; border-left: 6px solid #f59e0b; background: #fef3c7; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">' +
                     '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1px; padding: 8px 12px;">' +
                     '<h3 style="color: #f59e0b; margin: 0; display: flex; align-items: center; gap: 6px; font-size: 18px; font-weight: 700; font-family: \'SF Pro Display\', -apple-system, BlinkMacSystemFont, \'Inter\', sans-serif; letter-spacing: -0.3px; line-height: 1.1;">' +
-                    '<label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">' +
-                    '<input type="checkbox" ' + (allGroupSelected ? 'checked' : '') + ' onchange="toggleGroupSelection(\'' + rb + '\')" style="transform: scale(1.3);">' +
-                    '⚠️ Neklasificirani rezultati (' + groupItems.length + '):</label>' +
+                    '⚠️ Neklasificirani rezultati (' + groupItems.length + '):' +
                     '<button onclick="toggleGroup(\'' + groupId + '\')" style="background: none; border: none; cursor: pointer; font-size: 16px; color: #f59e0b; margin: 0 2px;" title="Skupi/Proširi grupu">' +
                     (isCollapsed ? '▶️' : '🔽') + '</button></h3>' +
                     '<div style="text-align: right; display: flex; flex-direction: column; gap: 2px;">' +
@@ -287,12 +326,11 @@ function updateResultsDisplay() {
                     '<button class="btn btn-danger" onclick="clearGroup(\'' + rb + '\')" style="padding: 2px 6px; font-size: 11px; font-family: inherit;" title="Obriši sve neklasificirane">🗑️</button>' +
                     '</div></div></div>';
             } else {
-                html += '<div class="card" id="group-' + rb + '" style="margin-bottom: 3px; border-left: 6px solid #7c3aed; font-family: -apple-system, BlinkMacSystemFont, sans-serif;">' +
+                const isGroupSelected = window.selectedGroups.has(rb);
+                html += '<div class="card" id="group-' + rb + '" style="margin-bottom: 3px; border-left: 6px solid #7c3aed; font-family: -apple-system, BlinkMacSystemFont, sans-serif; ' + (isGroupSelected ? 'background: #f0fdf4; box-shadow: 0 0 8px rgba(22, 163, 74, 0.3);' : '') + '">' +
                 '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1px; padding: 6px 8px;">' +
-                '<h3 style="color: #7c3aed; margin: 0; display: flex; align-items: center; gap: 4px; font-size: 18px; font-weight: 700; font-family: \'SF Pro Display\', -apple-system, BlinkMacSystemFont, \'Inter\', sans-serif; letter-spacing: -0.3px; line-height: 1.1;">' +
-                '<label style="cursor: pointer; display: flex; align-items: center; gap: 2px;">' +
-                '<input type="checkbox" ' + (allGroupSelected ? 'checked' : '') + ' onchange="toggleGroupSelection(' + rb + ')" style="transform: scale(1.3);">' +
-                'Grupa ' + rb + ':</label>' +
+                '<h3 style="color: #7c3aed; margin: 0; display: flex; align-items: center; gap: 6px; font-size: 18px; font-weight: 700; font-family: \'SF Pro Display\', -apple-system, BlinkMacSystemFont, \'Inter\', sans-serif; letter-spacing: -0.3px; line-height: 1.1;">' +
+                'Grupa ' + rb + ':' +
                 '<button onclick="toggleGroup(\'' + groupId + '\')" style="background: none; border: none; cursor: pointer; font-size: 16px; color: #7c3aed; margin: 0 2px;" title="Skupi/Proširi grupu">' +
                 (isCollapsed ? '▶️' : '🔽') + '</button>' + troskovnikName + '</h3>' +
                 '<div style="text-align: right; display: flex; flex-direction: column; gap: 0;">' +
@@ -301,33 +339,43 @@ function updateResultsDisplay() {
                 '<div style="font-size: 16px; color: #059669; font-weight: 800; font-family: inherit; line-height: 1.0;">UDIO: ' + groupShare.toFixed(1) + '%</div>' +
                 '<div style="font-size: 11px; color: #6b7280; font-family: inherit; line-height: 1.0; font-weight: 500;">' + troskovnikQuantity + ' × €' + lowestPrice.toFixed(2) + '</div>' +
                 '<div style="display: flex; gap: 3px; justify-content: flex-end;">' +
+                '<button class="btn ' + (isGroupSelected ? 'btn-success' : 'btn-outline') + '" onclick="toggleGroupSelection(' + rb + ')" style="padding: 1px 6px; font-size: 11px; font-family: inherit; line-height: 1.0; background: ' + (isGroupSelected ? '#16a34a' : '#e5e7eb') + '; color: ' + (isGroupSelected ? 'white' : '#374151') + '; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" title="Označi grupu za Popratiti">' + (isGroupSelected ? '✅ POPRATITI' : '📍 POPRATITI') + '</button>' +
                 '<button class="btn btn-success" onclick="scrollToTroskovnikForRB(' + rb + ')" style="padding: 1px 6px; font-size: 11px; font-family: inherit; line-height: 1.0; background: #059669; color: white;" title="Idi na troškovnik RB ' + rb + '">📋 Trošk.</button>' +
+                '<button class="btn btn-warning" onclick="openManualEntryModal(' + rb + ')" style="padding: 1px 6px; font-size: 11px; font-family: inherit; line-height: 1.0; background: #f59e0b; color: white; font-weight: bold;" title="Ručno dodaj stavku u RB ' + rb + '">➕ Dodaj</button>' +
                 '<button class="btn btn-purple" onclick="clearGroup(' + rb + ')" style="padding: 1px 3px; font-size: 11px; font-family: inherit; line-height: 1.0;" title="Obriši cijelu grupu">🗑️</button>' +
-                '</div></div></div>' +
-                '<div id="' + groupId + '-content" style="display: ' + (isCollapsed ? 'none' : 'block') + ';">';
+                '</div></div></div>';
             }
-            
-            // Common content for both PENDING and numbered groups
-            html +=
-                '<div class="table-container"><table class="table" style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 16px; border-spacing: 0; border-collapse: separate; width: 100%;"><thead><tr style="background: #f8fafc;">' +
-                '<th style="width: 30px; padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9;">✓</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 80px;">Šifra</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 200px;">Naziv</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 40px;">J.M.</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 70px;">VPC</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 80px;">VPC/kg</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 90px;">€/kom</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 90px; color: #6b7280;">€/kg<br><small style="font-size: 10px; font-weight: 400;">(auto)</small></th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 100px;">Dobavljač</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 60px;">Težina</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 70px;">Lani</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 50px;">PDV</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 70px;">Datum</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 60px;">Izvor</th>' +
-                '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 40px;">Del</th>' +
-                '</tr></thead><tbody>';
 
-            sortedItems.forEach((item, index) => {
+            // Common content for both PENDING and numbered groups
+            // Check if group is empty
+            if (sortedItems.length === 0) {
+                // Empty group - show message
+                html += '<div id="' + groupId + '-content" style="display: ' + (isCollapsed ? 'none' : 'block') + '; padding: 20px; text-align: center; background: #fafafa; border-radius: 8px; margin: 10px;">' +
+                    '<div style="font-size: 18px; color: #6b7280; margin-bottom: 8px;">📭</div>' +
+                    '<div style="font-size: 14px; color: #6b7280; font-weight: 500;">Nema rezultata u ovoj grupi</div>' +
+                    '<div style="font-size: 13px; color: #9ca3af; margin-top: 4px;">Kliknite <strong style="color: #f59e0b;">➕ Dodaj</strong> za ručni unos stavke</div>' +
+                    '</div></div>';
+            } else {
+                // Group has items - render table
+                html += '<div id="' + groupId + '-content" style="display: ' + (isCollapsed ? 'none' : 'block') + ';">' +
+                    '<div class="table-container"><table class="table" style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 16px; border-spacing: 0; border-collapse: separate; width: 100%;"><thead><tr style="background: #f8fafc;">' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 80px;">Šifra</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 200px;">Naziv</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 40px;">J.M.</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 70px;">VPC</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 80px;">VPC/kg</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 90px;">€</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 90px; color: #6b7280;">€/kg<br><small style="font-size: 10px; font-weight: 400;">(auto)</small></th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 100px;">Dobavljač</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 60px;">Težina</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 70px;">Lani</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 50px;">PDV</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 70px;">Datum</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 60px;">Izvor</th>' +
+                    '<th style="padding: 2px; font-size: 14px; font-weight: 700; line-height: 0.9; width: 40px;">Del</th>' +
+                    '</tr></thead><tbody>';
+
+                sortedItems.forEach((item, index) => {
                 const resultKey = item.id + '-' + item.rb;
                 const isSelected = selectedResults.has(resultKey);
 
@@ -375,7 +423,12 @@ function updateResultsDisplay() {
                 const calculatedWeight = item.calculatedWeight || item.weight || extractWeight(item.name, item.unit) || 0;
                 const originalPricePerKg = calculatedWeight > 0 ? price / calculatedWeight : 0;
                 const userPricePerPiece = item.pricePerPiece || 0;
-                const userPricePerKg = item.pricePerKg || originalPricePerKg;
+
+                // CRITICAL FIX: €/kg = Cijena u polju (€) / Težina u editabilnom polju
+                // Ako korisnik ima cijenu, trebaj je prati sa težinom
+                const userPricePerKg = userPricePerPiece > 0 && calculatedWeight > 0
+                    ? Math.round((userPricePerPiece / calculatedWeight) * 100) / 100
+                    : originalPricePerKg;
 
                 // ✅ Get last year's price ONLY for "NAŠ" articles (to prevent mixing with external articles)
                 const lastYearPrice = (isOurArticle && window.getProslogodisnjaCijena) ?
@@ -393,13 +446,10 @@ function updateResultsDisplay() {
 
                 // First choice indicator - pokazuje se pored šifre
                 const firstChoiceIndicator = item.isFirstChoice === true ?
-                    '<span style="background: #059669; color: white; padding: 2px 6px; border-radius: 6px; font-size: 14px; margin-right: 6px; display: inline-block;">⭐</span>' :
-                    '';
+                    '<span style="background: #059669; color: white; padding: 2px 6px; border-radius: 6px; font-size: 14px; margin-right: 6px; display: inline-block; cursor: default;">⭐</span>' :
+                    '<span style="background: #d1d5db; color: #6b7280; padding: 2px 6px; border-radius: 6px; font-size: 14px; margin-right: 6px; display: inline-block; cursor: pointer;" onclick="promoteToFirstChoice(\'' + resultKey + '\')" title="Klikni za postavljanje kao prvi izbor">☆</span>';
 
                 html += '<tr style="' + rowStyle + '" class="result-row">' +
-                    '<td style="padding: 1px; text-align: center; vertical-align: middle;">' +
-                    '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' onchange="toggleResult(\'' + resultKey + '\')" style="transform: scale(1.4); cursor: pointer;">' +
-                    '</td>' +
                     '<td style="padding: 1px; font-weight: 700; font-size: 15px; line-height: 0.9; vertical-align: middle;">' +
                     firstChoiceIndicator + (item.code || '') + '</td>' +
                     '<td style="padding: 1px; max-width: 200px; font-size: 15px; line-height: 0.9; vertical-align: middle;" title="' + (item.name || '') + '">' + (item.name || '') + '</td>' +
@@ -410,9 +460,9 @@ function updateResultsDisplay() {
 
                 if (isOurArticle) {
                     html += '<td style="padding: 1px; vertical-align: middle;"><div class="price-input-group">' +
-                        '<div class="price-input-label" style="font-size: 12px; color: #16a34a; line-height: 0.8; font-weight: 700;">€/kom</div>' +
+                        '<div class="price-input-label" style="font-size: 12px; color: #16a34a; line-height: 0.8; font-weight: 700;">€</div>' +
                         '<input type="number" step="0.01" value="' + userPricePerPiece.toFixed(2) + '" class="' + pieceClass + '" ' +
-                        'onchange="updateResultPrice(\'' + resultKey + '\', \'pricePerPiece\', this.value)" onfocus="this.select()" placeholder="0.00" title="Unesite izlaznu cijenu po komadu" ' +
+                        'onchange="updateResultPrice(\'' + resultKey + '\', \'pricePerPiece\', this.value)" onfocus="this.select()" placeholder="0.00" title="Unesite izlaznu cijenu" ' +
                         'style="width: 80px; padding: 1px; border: 2px solid #16a34a; background: #ecfdf5; color: #16a34a; border-radius: 3px; font-size: 14px; line-height: 0.9; font-weight: 700;">' +
                         '<div class="price-sync-indicator" style="font-size: 10px; color: #16a34a; line-height: 0.8; font-weight: 600;">' + (item.hasUserPrice && item.userPriceType === 'pricePerPiece' ? '✓' : '↻') + '</div></div></td>' +
                         '<td style="padding: 1px; text-align: center; vertical-align: middle;">' +
@@ -512,9 +562,10 @@ function updateResultsDisplay() {
                     '<td style="padding: 1px; text-align: center; vertical-align: middle;"><button class="auto-btn" onclick="removeResult(\'' + resultKey + '\')" title="Ukloni rezultat" ' +
                     'style="background: #ef4444; color: white; border: none; padding: 1px 2px; border-radius: 3px; font-size: 12px; cursor: pointer; line-height: 0.9; font-weight: 600;">🗑️</button></td>' +
                     '</tr>';
-            });
+                });
 
-            html += '</tbody></table></div></div></div>';
+                html += '</tbody></table></div></div></div>';
+            } // End of if-else for empty/filled groups
         });
 
         container.innerHTML = html;
@@ -1006,9 +1057,628 @@ function reclassifyResultsAfterStateLoad() {
 
 window.reclassifyResultsAfterStateLoad = reclassifyResultsAfterStateLoad;
 
+/**
+ * NEW: Opens modal for manual entry into a group
+ * @param {number} rb - RB number for the group
+ */
+function openManualEntryModal(rb) {
+    // Check if modal already exists, remove it
+    const existingModal = document.getElementById('manualEntryModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    // Get troskovnik info for this RB
+    const troskovnikItem = getTroskovnikItemForRB(rb);
+    const troskovnikName = troskovnikItem ? troskovnikItem.naziv_artikla : 'Stavka ' + rb;
+
+    // Check if this will be first or second choice
+    const existingResultsInGroup = results.filter(r => r.rb == rb);
+    const isFirstChoice = existingResultsInGroup.length === 0;
+    const choiceLabel = isFirstChoice ? 'Prvi izbor ⭐' : 'Drugi izbor';
+
+    // Create modal HTML
+    const modalHTML = `
+        <div id="manualEntryModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+            <div style="background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                <h2 style="margin: 0 0 8px 0; color: #f59e0b; font-size: 20px; font-weight: 700;">
+                    ➕ Ručni unos stavke
+                </h2>
+                <p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px;">
+                    RB ${rb}: ${troskovnikName}
+                </p>
+                <p style="margin: 0 0 20px 0; padding: 8px 12px; background: ${isFirstChoice ? '#dcfce7' : '#fef3c7'}; border-radius: 6px; color: ${isFirstChoice ? '#059669' : '#f59e0b'}; font-size: 13px; font-weight: 600;">
+                    ${choiceLabel}${!isFirstChoice ? ' - Prodajna cijena nije obavezna' : ''}
+                </p>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 14px; color: #374151;">Naziv artikla <span style="color: #dc2626;">*</span></label>
+                    <input type="text" id="manualEntryNaziv" placeholder="Unesite naziv artikla"
+                        style="width: 100%; padding: 8px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px;" />
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 14px; color: #374151;">Mjerna jedinica <span style="color: #dc2626;">*</span></label>
+                    <input type="text" id="manualEntryJM" placeholder="npr. kom, kg, l"
+                        style="width: 100%; padding: 8px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px;" />
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 14px; color: #374151;">Težina (kg) <span style="color: #dc2626;">*</span></label>
+                        <input type="number" step="0.001" id="manualEntryTezina" placeholder="0.000"
+                            style="width: 100%; padding: 8px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px;" />
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 14px; color: #374151;">PDV stopa <span style="color: #dc2626;">*</span></label>
+                        <select id="manualEntryPDV"
+                            style="width: 100%; padding: 8px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px;">
+                            <option value="25">25%</option>
+                            <option value="5">5%</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 14px; color: #374151;">Nabavna cijena (€) <span style="color: #dc2626;">*</span></label>
+                        <input type="number" step="0.01" id="manualEntryNabavna" placeholder="0.00"
+                            style="width: 100%; padding: 8px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px;" />
+                    </div>
+                    <div>
+                        <label style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 14px; color: #374151;">
+                            Prodajna cijena (€) ${isFirstChoice ? '<span style="color: #dc2626;">*</span>' : '<span style="color: #9ca3af;">(opcionalno)</span>'}
+                        </label>
+                        <input type="number" step="0.01" id="manualEntryProdajna" placeholder="0.00"
+                            style="width: 100%; padding: 8px; border: 2px solid #d1d5db; border-radius: 6px; font-size: 14px;" />
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                    <button onclick="closeManualEntryModal()"
+                        style="padding: 10px 20px; border: 2px solid #d1d5db; background: white; color: #374151; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">
+                        Odustani
+                    </button>
+                    <button onclick="submitManualEntry(${rb})"
+                        style="padding: 10px 20px; border: none; background: #f59e0b; color: white; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">
+                        ➕ Dodaj stavku
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Add modal to body
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    // Focus first input
+    setTimeout(() => {
+        document.getElementById('manualEntryNaziv').focus();
+    }, 100);
+
+    // Add ESC key handler
+    const escHandler = (e) => {
+        if (e.key === 'Escape') {
+            closeManualEntryModal();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+}
+
+/**
+ * NEW: Closes manual entry modal
+ */
+function closeManualEntryModal() {
+    const modal = document.getElementById('manualEntryModal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+/**
+ * NEW: Submits manual entry form and adds to results
+ * @param {number} rb - RB number for the group
+ */
+function submitManualEntry(rb) {
+    // Get form values
+    const naziv = document.getElementById('manualEntryNaziv').value.trim();
+    const jm = document.getElementById('manualEntryJM').value.trim();
+    const tezina = parseFloat(document.getElementById('manualEntryTezina').value) || 0;
+    const pdv = parseInt(document.getElementById('manualEntryPDV').value) || 25;
+    const nabavna = parseFloat(document.getElementById('manualEntryNabavna').value) || 0;
+    const prodajna = parseFloat(document.getElementById('manualEntryProdajna').value) || 0;
+
+    // Check if group already has results
+    const existingResultsInGroup = results.filter(r => r.rb == rb);
+    const isFirstChoice = existingResultsInGroup.length === 0;
+
+    // Validation
+    if (!naziv) {
+        alert('Molimo unesite naziv artikla!');
+        document.getElementById('manualEntryNaziv').focus();
+        return;
+    }
+    if (!jm) {
+        alert('Molimo unesite mjernu jedinicu!');
+        document.getElementById('manualEntryJM').focus();
+        return;
+    }
+    if (tezina <= 0) {
+        alert('Molimo unesite važeću težinu (veću od 0)!');
+        document.getElementById('manualEntryTezina').focus();
+        return;
+    }
+    if (nabavna <= 0) {
+        alert('Molimo unesite važeću nabavnu cijenu (veću od 0)!');
+        document.getElementById('manualEntryNabavna').focus();
+        return;
+    }
+
+    // NEW: Prodajna cijena je OBAVEZNA samo za prvi izbor
+    if (isFirstChoice && prodajna <= 0) {
+        alert('Molimo unesite važeću prodajnu cijenu (veću od 0)!\n\nNapomena: Za prvi izbor prodajna cijena je obavezna.');
+        document.getElementById('manualEntryProdajna').focus();
+        return;
+    }
+
+    // Generate unique ID and code
+    const timestamp = Date.now();
+    const uniqueID = results.length > 0 ? Math.max(...results.map(r => r.id)) + 1 : 1;
+    const code = 'MANUAL-' + timestamp;
+
+    // Calculate pricePerKg (only if prodajna is provided)
+    const pricePerKg = prodajna > 0 ? prodajna / tezina : 0;
+
+    // Create manual entry result object
+    const manualEntry = {
+        id: uniqueID,
+        rb: rb,
+        code: code,
+        name: naziv,
+        unit: jm,
+        price: nabavna,
+        pricePerPiece: prodajna,  // Can be 0 for second choice
+        pricePerKg: Math.round(pricePerKg * 100) / 100,
+        calculatedWeight: tezina,
+        weight: tezina,
+        source: 'MANUAL_ENTRY',
+        supplier: 'Ručni unos',
+        date: new Date().toISOString(),
+        hasUserPrice: isFirstChoice && prodajna > 0,  // Only first choice with price has user price
+        userPriceType: prodajna > 0 ? 'pricePerPiece' : null,
+        isFirstChoice: isFirstChoice,
+        isManualEntry: true,
+        customPdvStopa: pdv,
+        pdvStopa: pdv,
+        tarifniBroj: ''
+    };
+
+    // Add to results array
+    results.push(manualEntry);
+
+    // Add to selected results
+    const resultKey = uniqueID + '-' + rb;
+    selectedResults.add(resultKey);
+
+    // Update troškovnik if this is first choice
+    if (isFirstChoice && typeof window.troskovnik !== 'undefined') {
+        const troskovnikItem = troskovnik.find(t => t.redni_broj == rb);
+        if (troskovnikItem) {
+            troskovnikItem.nabavna_cijena_1 = Math.round(nabavna * 100) / 100;
+            troskovnikItem.izlazna_cijena = Math.round(prodajna * 100) / 100;
+            troskovnikItem.dobavljac_1 = 'Ručni unos';
+
+            // Calculate RUC/KG
+            const ruc = troskovnikItem.izlazna_cijena - troskovnikItem.nabavna_cijena_1;
+            const weight = parseFloat(troskovnikItem.tezina) || 0;
+            if (weight > 0) {
+                troskovnikItem.ruc_per_kg = Math.round((ruc / weight) * 100) / 100;
+            } else {
+                troskovnikItem.ruc_per_kg = 0;
+            }
+
+            // Update troškovnik display
+            if (typeof updateTroskovnikDisplay === 'function') {
+                updateTroskovnikDisplay();
+            }
+            if (typeof refreshTroskovnikColors === 'function') {
+                refreshTroskovnikColors();
+            }
+        }
+    }
+
+    // Close modal
+    closeManualEntryModal();
+
+    // Update results display
+    updateResultsDisplay();
+
+    // Show success message
+    const choiceText = isFirstChoice ? 'prvi izbor ⭐' : 'drugi izbor';
+    showMessage('success', `Dodana ručna stavka "${naziv}" kao ${choiceText} u RB ${rb}`, null, 3000);
+
+    console.log(`✅ Manual entry added: "${naziv}" as ${choiceText} to RB ${rb}`);
+}
+
+// Expose new functions globally
+window.openManualEntryModal = openManualEntryModal;
+window.closeManualEntryModal = closeManualEntryModal;
+window.submitManualEntry = submitManualEntry;
+
+/**
+ * NEW: Toggles group selection for "Popratiti" export
+ * @param {number} rb - RB number to toggle
+ */
+function toggleGroupSelection(rb) {
+    if (window.selectedGroups.has(rb)) {
+        window.selectedGroups.delete(rb);
+        console.log(`🔓 Grupa ${rb} odznačena za praćenje`);
+    } else {
+        window.selectedGroups.add(rb);
+        console.log(`✅ Grupa ${rb} označena za praćenje (Popratiti)`);
+    }
+    // Refresh display to show visual feedback
+    updateResultsDisplay();
+}
+
+/**
+ * NEW: Exports selected groups as "popratiti.xlsx" Excel file
+ * Used to track which articles to order if tender passes
+ * @param {boolean} returnBlob - If true, returns Blob instead of downloading (for ZIP integration)
+ */
+function exportPopratuToExcel(returnBlob = false) {
+    if (window.selectedGroups.size === 0) {
+        if (!returnBlob) {
+            showMessage('warning', '⚠️ Nema označenih grupa! Molimo označite grupe koje trebate pratiti.');
+        }
+        return null;
+    }
+
+    try {
+        // Prepare data for Excel
+        const exportData = [];
+
+        window.selectedGroups.forEach(rb => {
+            // Get troskovnik item for this RB
+            const troskovnikItem = window.troskovnik ? window.troskovnik.find(t => t.redni_broj == rb) : null;
+
+            if (!troskovnikItem) return;
+
+            // Get all results for this RB (SVE rezultate, ne samo prvi izbor!)
+            const groupItems = window.results.filter(r => r.rb == rb);
+
+            // NOVO: Eksportiraj SVE rezultate iz grupe
+            groupItems.forEach(item => {
+                // Use date from item if available, otherwise use current date
+                const itemDate = item.date ? new Date(item.date).toLocaleDateString('hr-HR') : new Date().toLocaleDateString('hr-HR');
+
+                // Get J.M. from troskovnik
+                const jmTroskovnika = troskovnikItem.mjerna_jedinica || troskovnikItem.jedinica_mjere || '';
+
+                // Calculate price per kilogram for nabavna cijena
+                const itemWeight = item.calculatedWeight || item.weight || 0;
+                const itemPrice = item.price || 0;
+                const pricePerKg = itemWeight > 0 ? itemPrice / itemWeight : 0;
+
+                exportData.push({
+                    'RB': rb,
+                    'Naziv': troskovnikItem.naziv_artikla || '',
+                    'Šifra': item.code || '',
+                    'Naziv artikla': item.name || '',
+                    'Dobavljač': item.supplier || '',
+                    'Nabavna cijena (€)': itemPrice.toFixed(2),
+                    'J.M.': jmTroskovnika,
+                    'Količina': troskovnikItem.trazena_kolicina || 1,
+                    'Količina za narudžbu': '', // Empty field for user to fill
+                    'Izvor': item.source || 'Nepoznato',
+                    'Datum': itemDate
+                });
+            });
+        });
+
+        if (exportData.length === 0) {
+            if (!returnBlob) {
+                showMessage('error', '❌ Nema podataka za export!');
+            }
+            return null;
+        }
+
+        // Create workbook and worksheet
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Popratiti');
+
+        // Format columns (NOVO: J.M. umjesto Cijena, bez "Cijena (€)" stupca)
+        ws['!cols'] = [
+            { wch: 6 },   // RB
+            { wch: 25 },  // Naziv
+            { wch: 12 },  // Šifra
+            { wch: 30 },  // Naziv artikla
+            { wch: 20 },  // Dobavljač
+            { wch: 14 },  // Nabavna cijena
+            { wch: 8 },   // J.M.
+            { wch: 12 },  // Količina
+            { wch: 18 },  // Količina za narudžbu
+            { wch: 20 },  // Izvor
+            { wch: 12 }   // Datum
+        ];
+
+        // Format header row
+        const headerStyle = {
+            fill: { fgColor: { rgb: 'FF7C3AED' } }, // Purple background
+            font: { bold: true, color: { rgb: 'FFFFFFFF' } }, // White text
+            alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+        };
+
+        for (let col = 0; col < 11; col++) {
+            const cellAddress = XLSX.utils.encode_col(col) + '1';
+            if (ws[cellAddress]) {
+                ws[cellAddress].s = headerStyle;
+            }
+        }
+
+        // If returnBlob is true, return the Excel file as Blob (for ZIP integration)
+        if (returnBlob) {
+            // Return as array buffer for JSZip
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            return wbout;
+        }
+
+        // Otherwise, download directly
+        const filenames = generateTenderFilenames('Popratiti', 'xlsx');
+        const filename = `${filenames.datumPredaje}_${filenames.cleanGrupa}_${filenames.cleanKupac}_Popratiti.xlsx`;
+
+        // Save file
+        XLSX.writeFile(wb, filename);
+
+        showMessage('success',
+            `✅ Popratiti Excel file exportan!\n\n` +
+            `📁 Datoteka: ${filename}\n` +
+            `📊 Stavki: ${exportData.length}\n\n` +
+            `💡 Ovaj file koristi za praćenje narudžbi ako prođete natječaj!\n` +
+            `✍️ Popunite "Količina za narudžbu" stupac s količinama koje trebate naručiti.`
+        );
+
+        console.log(`✅ Popratiti Excel exported: ${filename} (${exportData.length} stavki) - Stupci: RB, Naziv, Šifra, Naziv artikla, Dobavljač, Nabavna cijena, J.M., Količina, Količina za narudžbu, Izvor, Datum`);
+        return null;
+
+    } catch (error) {
+        console.error('❌ Popratiti export error:', error);
+        if (!returnBlob) {
+            showMessage('error', `Greška pri exportu: ${error.message}`);
+        }
+        return null;
+    }
+}
+
+/**
+ * NEW: Promotes a result to first choice with price entry modal
+ * @param {string} resultKey - Result key (id-rb)
+ */
+function promoteToFirstChoice(resultKey) {
+    const [id, rb] = resultKey.split('-');
+    const newFirstChoice = results.find(r => r.id == id && r.rb == rb);
+
+    if (!newFirstChoice) {
+        showMessage('error', 'Rezultat nije pronađen!');
+        return;
+    }
+
+    if (newFirstChoice.isFirstChoice) {
+        showMessage('info', 'Ovaj artikl je već prvi izbor.');
+        return;
+    }
+
+    // Get troskovnik info for this RB
+    const troskovnikItem = getTroskovnikItemForRB(rb);
+    if (!troskovnikItem) {
+        showMessage('error', 'Grupa nije pronađena u troškovniku!');
+        return;
+    }
+
+    // Get current first choice to remove price from it
+    const currentFirstChoice = results.find(r => r.rb == rb && r.isFirstChoice);
+
+    // Check if modal already exists
+    const existingModal = document.getElementById('promoteToFirstChoiceModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    const troskovnikWeight = parseFloat(troskovnikItem.tezina) || 1;
+    const newArticleWeight = newFirstChoice.calculatedWeight || newFirstChoice.weight || 0;
+
+    const modalHTML = `
+        <div id="promoteToFirstChoiceModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+            <div style="background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+                <h2 style="margin: 0 0 8px 0; color: #059669; font-size: 20px; font-weight: 700;">
+                    ⭐ Postavi kao prvi izbor
+                </h2>
+                <p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px;">
+                    Grupa RB ${rb}: ${troskovnikItem.naziv_artikla}
+                </p>
+
+                <div style="margin: 0 0 20px 0; padding: 12px; background: #f0fdf4; border-left: 4px solid #16a34a; border-radius: 4px;">
+                    <div style="font-weight: 600; color: #16a34a; margin-bottom: 4px;">Novi prvi izbor:</div>
+                    <div style="font-size: 15px; color: #1f2937; margin-bottom: 2px;">${newFirstChoice.name}</div>
+                    <div style="font-size: 13px; color: #6b7280;">Težina: ${newArticleWeight.toFixed(3)}kg</div>
+                </div>
+
+                <div style="margin: 0 0 20px 0; padding: 12px; background: #f3f4f6; border-left: 4px solid #6b7280; border-radius: 4px;">
+                    <div style="font-weight: 600; color: #6b7280; margin-bottom: 4px;">Tražena težina (Troškovnik):</div>
+                    <div style="font-size: 15px; color: #1f2937;">${troskovnikWeight.toFixed(3)}kg</div>
+                </div>
+
+                ${currentFirstChoice ? `
+                    <div style="margin: 0 0 20px 0; padding: 12px; background: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px;">
+                        <div style="font-weight: 600; color: #f59e0b; margin-bottom: 4px;">Stari prvi izbor:</div>
+                        <div style="font-size: 13px; color: #6b7280;">Cijena će biti obrisana</div>
+                    </div>
+                ` : ''}
+
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 14px; color: #374151;">
+                        Unesite cijenu (€) za ${newFirstChoice.unit} <span style="color: #dc2626;">*</span>
+                    </label>
+                    <input type="number" step="0.01" id="promotePrice" placeholder="0.00" min="0.01" max="50"
+                        style="width: 100%; padding: 10px; border: 2px solid #16a34a; border-radius: 6px; font-size: 14px; font-weight: 600;" autofocus />
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+                        💡 Unesena cijena će biti automatski preračunata na ${troskovnikWeight.toFixed(3)}kg
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; justify-content: flex-end;">
+                    <button onclick="closePromoteModal()"
+                        style="padding: 10px 20px; border: 2px solid #d1d5db; background: white; color: #374151; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">
+                        Odustani
+                    </button>
+                    <button onclick="confirmPromoteToFirstChoice('${resultKey}', ${rb}, ${newArticleWeight}, ${troskovnikWeight})"
+                        style="padding: 10px 20px; border: none; background: #059669; color: white; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">
+                        ⭐ Postavi
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    // Focus price input
+    setTimeout(() => {
+        document.getElementById('promotePrice').focus();
+    }, 100);
+
+    // ESC key handler
+    const escHandler = (e) => {
+        if (e.key === 'Escape') {
+            closePromoteModal();
+            document.removeEventListener('keydown', escHandler);
+        }
+    };
+    document.addEventListener('keydown', escHandler);
+}
+
+/**
+ * NEW: Closes promote modal
+ */
+function closePromoteModal() {
+    const modal = document.getElementById('promoteToFirstChoiceModal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+/**
+ * NEW: Confirms promotion to first choice and applies price
+ */
+function confirmPromoteToFirstChoice(resultKey, rb, newArticleWeight, troskovnikWeight) {
+    const priceInput = document.getElementById('promotePrice').value.trim();
+    const price = parseFloat(priceInput);
+
+    // Validation
+    if (!price || isNaN(price) || price <= 0) {
+        alert('Molimo unesite važeću cijenu (veću od 0)!');
+        document.getElementById('promotePrice').focus();
+        return;
+    }
+
+    if (price < 0.50 || price > 50.00) {
+        alert('Cijena mora biti između €0.50 i €50.00!');
+        document.getElementById('promotePrice').focus();
+        return;
+    }
+
+    const [id, rbStr] = resultKey.split('-');
+    const newFirstChoice = results.find(r => r.id == id && r.rb == rb);
+
+    if (!newFirstChoice) {
+        showMessage('error', 'Rezultat nije pronađen!');
+        return;
+    }
+
+    // Find current first choice to remove price
+    const currentFirstChoice = results.find(r => r.rb == rb && r.isFirstChoice);
+    const troskovnikItem = getTroskovnikItemForRB(rb);
+
+    if (!troskovnikItem) {
+        showMessage('error', 'Grupa nije pronađena!');
+        return;
+    }
+
+    // STEP 1: Remove price from old first choice
+    if (currentFirstChoice) {
+        currentFirstChoice.isFirstChoice = false;
+        currentFirstChoice.pricePerPiece = 0;
+        currentFirstChoice.pricePerKg = 0;
+        currentFirstChoice.hasUserPrice = false;
+        currentFirstChoice.userPriceType = null;
+    }
+
+    // STEP 2: Calculate price for troškovnik weight
+    // Formula: price_for_troskovnik_weight = (user_price / new_article_weight) × troskovnik_weight
+    const pricePerKg = price / newArticleWeight;
+    const priceFrTroskovnikWeight = pricePerKg * troskovnikWeight;
+
+    // STEP 3: Set new first choice
+    newFirstChoice.isFirstChoice = true;
+    newFirstChoice.pricePerPiece = Math.round(price * 100) / 100;
+    newFirstChoice.pricePerKg = Math.round(pricePerKg * 100) / 100;
+    newFirstChoice.hasUserPrice = true;
+    newFirstChoice.userPriceType = 'pricePerPiece';
+
+    // STEP 4: Update troškovnik
+    troskovnikItem.nabavna_cijena_1 = Math.round(pricePerKg * 100) / 100;
+    troskovnikItem.izlazna_cijena = Math.round(priceFrTroskovnikWeight * 100) / 100;
+    troskovnikItem.dobavljac_1 = newFirstChoice.supplier || '';
+
+    // Calculate RUC/KG
+    const ruc = troskovnikItem.izlazna_cijena - troskovnikItem.nabavna_cijena_1;
+    const weight = parseFloat(troskovnikItem.tezina) || 0;
+    if (weight > 0) {
+        troskovnikItem.ruc_per_kg = Math.round((ruc / weight) * 100) / 100;
+    } else {
+        troskovnikItem.ruc_per_kg = 0;
+    }
+
+    // Close modal
+    closePromoteModal();
+
+    // Update displays
+    if (typeof updateResultsDisplay === 'function') {
+        updateResultsDisplay();
+    }
+    if (typeof updateTroskovnikDisplay === 'function') {
+        updateTroskovnikDisplay();
+    }
+    if (typeof refreshTroskovnikColors === 'function') {
+        refreshTroskovnikColors();
+    }
+
+    // Show success message
+    const oldOldFirstChoice = currentFirstChoice ? currentFirstChoice.name : 'Bez izbora';
+    showMessage('success',
+        `✅ "${newFirstChoice.name}" je sada prvi izbor\n💰 Cijena: €${price} (preračunato: €${priceFrTroskovnikWeight.toFixed(2)} za ${troskovnikWeight.toFixed(3)}kg)`,
+        null, 4000);
+
+    console.log(`⭐ Promoted "${newFirstChoice.name}" to first choice for RB ${rb}`);
+    console.log(`   Original weight: ${newArticleWeight.toFixed(3)}kg`);
+    console.log(`   Troškovnik weight: ${troskovnikWeight.toFixed(3)}kg`);
+    console.log(`   User price: €${price}`);
+    console.log(`   Price for troškovnik: €${priceFrTroskovnikWeight.toFixed(2)}`);
+}
+
+// Expose new functions globally
+window.promoteToFirstChoice = promoteToFirstChoice;
+window.closePromoteModal = closePromoteModal;
+window.confirmPromoteToFirstChoice = confirmPromoteToFirstChoice;
+window.toggleGroupSelection = toggleGroupSelection;
+window.exportPopratuToExcel = exportPopratuToExcel;
+
 // console.log('✅ FIXED Enhanced results module loaded:');
 // console.log('🎨 FIXED: All red colors changed to purple (#7c3aed)');
 // console.log('💰 FIXED: Nabavna vrijednost color changed to purple');
 // console.log('🗑️ FIXED: Delete buttons now use purple background');
 // console.log('⚠️ FIXED: Error messages use purple colors');
 // console.log('📊 Enhanced price management and VPC/kg column ready');
+console.log('✅ NEW: Manual entry functionality added - empty groups now visible with ➕ button');

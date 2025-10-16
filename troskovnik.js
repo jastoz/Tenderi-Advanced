@@ -558,7 +558,7 @@ class TroskovnikUI {
 
         return '<tr data-rb="' + item.redni_broj + '" style="' + style + '">' +
             rbCell +
-            '<td ' + comment.attributes + ' ' + hover.attributes + ' style="font-size: 14px; word-wrap: break-word; overflow-wrap: break-word; max-width: 350px; min-width: 250px; padding: 8px; position: relative; white-space: normal; overflow: visible; text-overflow: unset;">' + item.naziv_artikla + comment.icon + linkIcon + '</td>' +
+            '<td ' + comment.attributes + ' ' + hover.attributes + ' onmouseenter="showFirstChoiceTooltip(' + item.redni_broj + ', event)" onmouseleave="hideFirstChoiceTooltip()" style="font-size: 14px; word-wrap: break-word; overflow-wrap: break-word; max-width: 350px; min-width: 250px; padding: 8px; position: relative; white-space: normal; overflow: visible; text-overflow: unset; cursor: help;">' + item.naziv_artikla + comment.icon + linkIcon + '</td>' +
             '<td style="text-align: center; font-size: 14px;">' + item.mjerna_jedinica + '</td>' +
             '<td style="text-align: center;">' + this.renderWeightInput(item) + '</td>' +
             '<td style="text-align: center;">' + this.renderQuantityInput(item) + '</td>' +
@@ -1332,25 +1332,31 @@ function finalizeTroskovnikLoading(troskovnikItems, filename) {
         showTroskovnikMessage('error', '❌ Nema valjanih stavki u datoteci!');
         return;
     }
-    
+
     // Replace global troškovnik
     troskovnik.length = 0;
     troskovnik.push(...troskovnikItems);
-    
+
     // Update display
     TroskovnikUI.render();
-    
+
+    // NEW: Update results display to show empty groups from troškovnik
+    if (typeof updateResultsDisplay === 'function') {
+        updateResultsDisplay();
+        console.log('✅ Results display updated with empty groups from troškovnik');
+    }
+
     const itemsWithWeight = troskovnikItems.filter(item => item.tezina > 0).length;
     const itemsWithPrice = troskovnikItems.filter(item => item.izlazna_cijena > 0).length;
-    
-    showTroskovnikMessage('success', 
+
+    showTroskovnikMessage('success',
         '✅ Troškovnik uspješno učitan!\n' +
         '📊 Ukupno stavki: ' + troskovnikItems.length + '\n' +
         '⚖️ S težinom: ' + itemsWithWeight + '\n' +
         '💰 S cijenom: ' + itemsWithPrice + '\n\n' +
         '💡 Koristite "Generiraj težine" za automatsko popunjavanje!'
     );
-    
+
     const uploadEl = document.getElementById('troskovnikUpload');
     if (uploadEl) uploadEl.classList.add('hidden');
 }
@@ -2051,6 +2057,157 @@ function fixExistingTroskovnikIds() {
     // console.log(message);
 }
 
+// ===== FIRST CHOICE TOOLTIP (NEW) =====
+/**
+ * Shows tooltip with first choice result info when hovering over troškovnik naziv
+ * @param {number} rb - RB number
+ * @param {Event} event - Mouse event for positioning
+ */
+function showFirstChoiceTooltip(rb, event) {
+    // Check if results array exists
+    if (typeof window.results === 'undefined' || !window.results) {
+        return;
+    }
+
+    // Find first choice for this RB
+    const firstChoice = window.results.find(r => r.rb == rb && r.isFirstChoice === true);
+
+    // If no first choice found, don't show tooltip
+    if (!firstChoice) {
+        return;
+    }
+
+    // Remove existing tooltip if any
+    hideFirstChoiceTooltip();
+
+    // Determine article type and colors
+    let bgColor, borderColor, badgeText, badgeColor;
+    const isOurArticle = window.isOurArticleVisual ? window.isOurArticleVisual(firstChoice.source) : false;
+
+    if (firstChoice.isManualEntry) {
+        // Manual entry - orange theme
+        bgColor = '#fef3c7';
+        borderColor = '#f59e0b';
+        badgeText = '🔧 RUČNI UNOS';
+        badgeColor = '#f59e0b';
+    } else if (isOurArticle) {
+        // Our articles - green theme
+        bgColor = '#dcfce7';
+        borderColor = '#16a34a';
+        badgeText = '🏠 NAŠ ARTIKL';
+        badgeColor = '#16a34a';
+    } else {
+        // External articles - purple theme
+        bgColor = '#ede9fe';
+        borderColor = '#7c3aed';
+        badgeText = '📋 PO CJENIKU';
+        badgeColor = '#7c3aed';
+    }
+
+    // Calculate VPC/kg
+    const weight = firstChoice.calculatedWeight || firstChoice.weight || 0;
+    const vpcPerKg = weight > 0 ? (firstChoice.price / weight) : 0;
+
+    // Format date
+    let formattedDate = 'N/A';
+    try {
+        if (firstChoice.date) {
+            formattedDate = new Date(firstChoice.date).toLocaleDateString('hr-HR', {
+                day: '2-digit', month: '2-digit', year: 'numeric'
+            });
+        }
+    } catch (e) {
+        formattedDate = firstChoice.date || 'N/A';
+    }
+
+    // Get PDV stopa
+    let pdvStopa = 'Auto';
+    if (firstChoice.customPdvStopa) {
+        pdvStopa = firstChoice.customPdvStopa + '%';
+    } else if (firstChoice.pdvStopa && firstChoice.pdvStopa > 0) {
+        pdvStopa = firstChoice.pdvStopa + '%';
+    } else if (firstChoice.code && typeof window.getArticleWeightAndPDV === 'function') {
+        const pdvData = window.getArticleWeightAndPDV(firstChoice.code, firstChoice.name, firstChoice.unit, firstChoice.source);
+        if (pdvData.pdvStopa > 0) {
+            pdvStopa = pdvData.pdvStopa + '%';
+        }
+    }
+
+    // Create tooltip HTML
+    const tooltipHTML = `
+        <div id="firstChoiceTooltip" style="
+            position: fixed;
+            left: ${event.clientX + 15}px;
+            top: ${event.clientY + 15}px;
+            background: ${bgColor};
+            border: 3px solid ${borderColor};
+            border-radius: 8px;
+            padding: 12px 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+            z-index: 99999;
+            min-width: 320px;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            font-size: 13px;
+            line-height: 1.6;
+            pointer-events: none;
+            animation: tooltipFadeIn 0.15s ease-out;
+        ">
+            <div style="font-weight: 700; font-size: 15px; margin-bottom: 8px; color: ${badgeColor}; border-bottom: 2px solid ${borderColor}; padding-bottom: 6px;">
+                ⭐ PRVI IZBOR - ${badgeText}
+            </div>
+            <div style="display: grid; gap: 4px;">
+                <div><strong>🏷️ Šifra:</strong> ${firstChoice.code || 'N/A'}</div>
+                <div><strong>📦 Naziv:</strong> ${firstChoice.name || 'N/A'}</div>
+                <div><strong>🏪 Dobavljač:</strong> ${firstChoice.supplier || 'N/A'}</div>
+                <div><strong>💰 Nabavna cijena:</strong> €${(firstChoice.price || 0).toFixed(2)}</div>
+                <div><strong>💵 Prodajna cijena:</strong> €${(firstChoice.pricePerPiece || 0).toFixed(2)}</div>
+                <div><strong>⚖️ Težina:</strong> ${weight.toFixed(3)} kg</div>
+                <div><strong>📊 VPC/kg:</strong> €${vpcPerKg.toFixed(3)}/kg</div>
+                <div><strong>🧾 PDV stopa:</strong> ${pdvStopa}</div>
+                <div><strong>📂 Izvor:</strong> ${firstChoice.source || 'N/A'}</div>
+                <div><strong>📅 Datum:</strong> ${formattedDate}</div>
+            </div>
+        </div>
+        <style>
+            @keyframes tooltipFadeIn {
+                from { opacity: 0; transform: translateY(-5px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+        </style>
+    `;
+
+    // Add tooltip to body
+    document.body.insertAdjacentHTML('beforeend', tooltipHTML);
+
+    // Adjust position if tooltip goes off-screen
+    const tooltip = document.getElementById('firstChoiceTooltip');
+    if (tooltip) {
+        const rect = tooltip.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        // Adjust horizontal position if off-screen
+        if (rect.right > viewportWidth) {
+            tooltip.style.left = (event.clientX - rect.width - 15) + 'px';
+        }
+
+        // Adjust vertical position if off-screen
+        if (rect.bottom > viewportHeight) {
+            tooltip.style.top = (event.clientY - rect.height - 15) + 'px';
+        }
+    }
+}
+
+/**
+ * Hides the first choice tooltip
+ */
+function hideFirstChoiceTooltip() {
+    const tooltip = document.getElementById('firstChoiceTooltip');
+    if (tooltip) {
+        tooltip.remove();
+    }
+}
+
 // ===== EXPORT GLOBAL FUNCTIONS (maintain compatibility) =====
 window.updateTroskovnikDisplay = updateTroskovnikDisplay;
 window.refreshTroskovnikColors = refreshTroskovnikColors;
@@ -2061,6 +2218,8 @@ window.exportTroskovnikExcel = exportTroskovnikExcel;
 window.getDemoTroskovnik = getDemoTroskovnik;
 window.fixExistingTroskovnikIds = fixExistingTroskovnikIds;
 window.parseDecimalQuantity = parseDecimalQuantity;
+window.showFirstChoiceTooltip = showFirstChoiceTooltip;
+window.hideFirstChoiceTooltip = hideFirstChoiceTooltip;
 
 // Legacy compatibility functions - FIXED TO USE PROPER UPDATE FUNCTION
 window.updateTroskovnikItem = function(id, field, value) {

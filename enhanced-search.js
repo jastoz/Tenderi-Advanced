@@ -89,12 +89,19 @@ function extractWeight(name, unit, articleCode, articleSource) {
 }
 
 /**
- * Parse search query with range support
+ * Parse search query with range support and exclude filter (--term syntax)
  */
 function parseSearchQuery(query) {
-    if (!query) return { segments: [] };
+    if (!query) return { segments: [], excludeTerms: [] };
 
-    const segments = query.split('*').map(seg => {
+    // NEW: Extract exclude terms first (split by --)
+    const parts = query.split('--');
+    const mainQuery = parts[0]; // Main search query
+    const excludeTerms = parts.slice(1)
+        .map(t => t.trim().toLowerCase())
+        .filter(t => t.length > 0); // Filter out empty terms
+
+    const segments = mainQuery.split('*').map(seg => {
         const trimmed = seg.trim();
         
         let rb = null;
@@ -152,17 +159,17 @@ function parseSearchQuery(query) {
             }
         }
 
-        return { 
-            rb, 
-            tokens: searchTokens, 
-            rangeMin, 
+        return {
+            rb,
+            tokens: searchTokens,
+            rangeMin,
             rangeMax,
             directCode, // DODAJ directCode u segment
-            originalSegment: trimmed 
+            originalSegment: trimmed
         };
     });
 
-    return { segments };
+    return { segments, excludeTerms }; // NEW: Include excludeTerms in return
 }
 
 /**
@@ -342,6 +349,26 @@ function performLiveSearch(query) {
                 return true;
             });
         }
+
+        // NEW: EXCLUDE filter (--term syntax)
+        // Apply exclude filter ONLY if excludeTerms exist
+        if (parsedQuery.excludeTerms && parsedQuery.excludeTerms.length > 0) {
+            const beforeCount = searchResults.length;
+            searchResults = searchResults.filter(item => {
+                const name = (item.name || '').toLowerCase();
+                const source = (item.source || '').toLowerCase();
+
+                // Exclude if ANY exclude term is found in name OR source
+                const shouldExclude = parsedQuery.excludeTerms.some(term =>
+                    name.includes(term) || source.includes(term)
+                );
+
+                return !shouldExclude; // Keep only items that should NOT be excluded
+            });
+            const afterCount = searchResults.length;
+            console.log(`🚫 Exclude filter: ${parsedQuery.excludeTerms.join(', ')} → filtered out ${beforeCount - afterCount} results (${afterCount} remaining)`);
+        }
+
         const filteredResults = searchResults.filter(item =>
             !excludedArticles.has(item.id)
         );
@@ -1250,7 +1277,7 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
     // ENHANCED: Get weight with special handling for historical articles
     let finalWeight;
     let isHistoricalWithWeight = false;
-    
+
     // Check if this is a historical article that exists in weight database
     if (article.isHistorical && article.code && typeof window.weightDatabase !== 'undefined' && window.weightDatabase.has(article.code)) {
         // Historical article exists in weight database - treat as "our" article
@@ -1261,6 +1288,8 @@ function addAsAdditionalChoice(articleId, targetRB, isOurArticle) {
         finalWeight = extractWeight(article.name, article.unit, article.code, article.source) ||
                      article.calculatedWeight || article.weight || 1;
     } else {
+        // CRITICAL FIX: Za vanjske članke (PO CJENIKU) koristi ispravnu težinu iz autocomplete-a, NE iz weightDatabase-a
+        // Trebaj user-entered weight ili parsed weight iz autocomplete-a
         finalWeight = article.calculatedWeight || article.weight || 0;
     }
 
@@ -1453,22 +1482,35 @@ async function addWithPriceFromAutocomplete(articleId, targetRB, isOurArticle) {
 
 /**
  * UPDATED: Add without price - now calls additional choice logic
+ * CRITICAL FIX: Čita korisnikovu unešenu težinu iz editabilnog polja za vanjske članke
  */
 function addWithoutPriceFromAutocomplete(articleId, targetRB) {
     // ✅ Right checkmark = Additional choice (same as Enter on empty field)
     // ENHANCED: Look for article in both main articles and autocomplete results (for historical items)
     let article = null;
-    
+
     // Try main articles first
     if (typeof articles !== 'undefined' && articles.length > 0) {
         article = articles.find(a => a.id === parseInt(articleId) || String(a.id) === String(articleId));
     }
-    
+
     // If not found in main articles, try autocomplete results (for historical items)
     if (!article && autocompleteResults.length > 0) {
         article = autocompleteResults.find(a => a.id === articleId || String(a.id) === String(articleId));
     }
-    
+
+    // CRITICAL FIX: Čitaj korisnikovu unešenu težinu iz editabilnog polja
+    // Za vanjske članke, trebaj koristiti točno ono što je korisnik unio, ne weightDatabase vrijednost
+    const weightInput = document.getElementById(`weight-${articleId}-${targetRB}`);
+    if (weightInput && weightInput.value && weightInput.value.trim() !== '' && article) {
+        const userWeight = parseFloat(weightInput.value.trim().replace(',', '.'));
+        if (!isNaN(userWeight) && userWeight > 0) {
+            article.calculatedWeight = userWeight;
+            article.weight = userWeight;
+            console.log(`✅ DRUGI IZBOR: Korisnikova težina ${userWeight}kg za ${article.code || article.name}`);
+        }
+    }
+
     const isOurArticle = article ? window.isTrulyOurArticle(article.source, article.code) : false;
     addAsAdditionalChoice(articleId, targetRB, isOurArticle);
 }
